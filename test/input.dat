@@ -1,0 +1,22 @@
+#############################
+# specifications for the string 
+#############################
+discard=0.1
+string="string.pdb" 
+maxrounds=30
+storedir="./store"
+workdir="./mywork"
+dumpfreq=100
+evolstep=0.00125  
+optends=True
+#############################
+## input file
+#############################
+#program GROMACS 
+#template md.mdp 
+#topology topol.top  
+#steps 3000 
+#programpath    /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/mdrun_mpi_d
+#preprocessor   /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/grompp_mpi_d 
+#gmxdir         /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install
+#trjconv        /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/trjconv_mpi_d 
