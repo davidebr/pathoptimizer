@@ -4,13 +4,14 @@
 discard=0.1
 string="string.pdb" 
 maxrounds=30
-storedir="./store"
-workdir="./mywork"
+storedir="store"
+workdir="mywork"
 dumpfreq=100
 evolstep=0.00125  
 optends=True
 pathtype="SOMA"
 springconstant=1500
+#restart=True
 #############################
 ## input file
 #############################

@@ -151,7 +151,7 @@ def readPDB(filename):
 		if  m[0]=="END" or m[0]=="TER":
 			# push the pdb into the image
 			#print pdb
-			img=ImageClass()			
+			img=ImageClass()
 			for i in range(len(pdb)):
 				img.details.append(pdb[i][0])
 				img.x.append(pdb[i][1])
@@ -173,13 +173,13 @@ def readPDB(filename):
 ##################################################################################
 class ImageClass(object):
 	""" A simple image class which is meant to keep the data from a pdb"""
-	fake=0
-	x=[]
-	y=[]
-	z=[]
-	occ=[]
-	beta=[]
-	details=[]
+	def __init__(self):
+		self.x=[]
+		self.y=[]
+		self.z=[]
+		self.occ=[]
+		self.beta=[]
+		self.details=[]
 ##################################################################################
 # the string is a collection of images plus information on how to run it
 # which dir, soma/pcv , spring constant(s)
@@ -201,6 +201,9 @@ class StringClass(object):
 		# type of optimization: soma or pathcvs
 		self.optimizationType(inputvariables)
        	 	self.rootdir=os.getcwd()
+		# make full names out of local
+		self.storedir=os.path.join(self.rootdir,self.storedir)
+		self.workdir=os.path.join(self.rootdir,self.workdir)
 		self.restart=False
 		copyVarsToObjectByName(self,["restart"],inputvariables,optional=True)
 
@@ -209,15 +212,75 @@ class StringClass(object):
 		copyVarsToObjectByName(self,["pathtype"],inputvariables)		
 		if  getattr(self,"pathtype").upper()=="SOMA" : 
 			print "This is a SOMA run: need a single spring constant "	
+			self.pathtype="SOMA"
 	                copyVarsToObjectByName(self,["springconstant"],inputvariables)
 		elif  getattr(self,"pathtype").upper()=="PCV" :
                         print "This is a PCV run "
+			self.pathtype="PCV"
 	                copyVarsToObjectByName(self,["springconstant_s"],inputvariables)
 	                copyVarsToObjectByName(self,["springconstant_z"],inputvariables)
 	                copyVarsToObjectByName(self,["lambda"],inputvariables)
 		else:
 			print "There is no such pathtype !!! ",getattr(self,"pathtype")
 			sys.exit(2)
+	def createDirs(self):
+		""" this should prepare and create the dirs"""	
+		# check if the working dir exist 
+		if os.path.exists(self.storedir)==False :
+			print "  The storedir does not yet exit : making it!"	 
+		        os.mkdir(self.storedir)	
+		if os.path.exists(self.workdir)==False :
+			print "  The workdir does not yet exist: making it!"	 
+		        os.mkdir(self.workdir)	
+		os.chdir(self.workdir)
+		for i in range (0,len(self.imagelist)):
+			dirname="dir_"+str(i+1)	
+                        self.imagelist[i].dirname=dirname
+			if os.path.exists(os.path.join(self.workdir,dirname))==False :
+				print "the dir "+dirname+" does not yet exit"	 
+			        os.mkdir(os.path.join(self.workdir,dirname))	
+			os.chdir(os.path.join(self.workdir,dirname))		
+                        os.system("rm -rf *") #clean up a bit 
+		os.chdir(self.rootdir)		
+	def setDirs(self):
+		""" this should only set the dirs for a restart"""	
+		# check if the working dir exist 
+		if os.path.exists(self.workdir)==False :
+			print "the workdir does not yet exist: looks like it is not a restart"	 
+			sys.exit()
+                os.chdir(self.workdir)
+		for i in range (0,len(self.imagelist)):
+			dirname="dir_"+str(i+1)	
+                        self.imagelist[i].dirname=dirname
+			if os.path.exists(os.path.join(self.workdir,dirname))==False :
+				print "the dir "+dirname+" does not yet exist: this is a rather bizarre restart "	 
+				sys.exit()
+
+		if os.path.exists(self.storedir)==False :
+			print "the workdir does not yet exist: looks like it is not a restart"	 
+			sys.exit()
+        def loadStringIntoWorkdirs(self):
+		""" Loads the frames in each workdir according soma/pcv optimization """
+		os.chdir(self.workdir)
+                for i in range (0,len(self.imagelist)):
+			# if soma: put the all images	
+			if self.pathtype=="PCV": # in pcvs all images are loaded 
+				self.imagelist[i].filename=os.path.join(self.workdir,self.imagelist[i].dirname,"iter_"+str(self.round)+".dat")
+				self.dumpImages(self.imagelist[i].filename,range(0,len(self.imagelist)))
+			elif self.pathtype=="SOMA": # soma must be splitted per image
+				self.imagelist[i].filename=os.path.join(self.workdir,self.imagelist[i].dirname,"iter_"+str(self.round)+"_"+str(i+1)+".dat")
+				self.dumpImages(self.imagelist[i].filename,[i])
+
+	def dumpImages(self,filename,mylist):
+		"""Dump a pdb on the filename with all the images on the list""" 
+		f=open(filename,"w")			
+		for i in mylist:
+			for j in range(len(self.imagelist[i].details)):					
+				buf="%s%8.3f%8.3f%8.3f%6.2f%6.2f\n"%(self.imagelist[i].details[j],self.imagelist[i].x[j],self.imagelist[i].y[j],self.imagelist[i].z[j],self.imagelist[i].occ[j],self.imagelist[i].beta[j]) 
+				f.write(buf)
+			f.write("END")
+		f.close()
+
 ##################################################################################
 # MDParserClass 
 ##################################################################################
@@ -268,34 +331,6 @@ class MDParserClass(object):
 		if os.path.isfile(os.path.join(os.path.join,"/bin",self.trjconv))==False:
 			print "  File ",os.path.join(os.getcwd(),self.trjconv)," is not there "
 			sys.exit(2)
-#	def createDirs(self):
-#		""" this should prepare and create the dirs"""	
-#		# check if the working dir exist 
-#		if os.path.exists(self.storedir)==False :
-#			print "the storedir does not yet exit"	 
-#		        os.mkdir(self.storedir)	
-#		os.chdir(self.storedir)
-#		# transform into absolute path	
-#		self.storedir=os.getcwd()
-#		os.chdir(self.rootdir)
-#		if os.path.exists(self.workdir)==False :
-#			print "the workdir does not yet exit"	 
-#		        os.mkdir(self.workdir)	
-#                os.chdir(self.workdir)
-#		# transform into absolute path	
-#		self.workdir=os.getcwd()
-#		for i in range (0,len(self.imagelist)):
-#			dirname="dir_"+str(i+1)	
-#                        self.imagelist[i].dirname=dirname
-#			if os.path.exists(dirname)==False :
-#				print "the dir "+dirname+" does not yet exit"	 
-#			        os.mkdir(dirname)	
-#			os.chdir(dirname)		
-#                        os.system("rm -rf *") #clean up a bit 
-#			os.chdir("../")		
-#		# now you should be in the root directory
-#		os.chdir(self.workdir)		
-
 ##################################################################################
 # QueueParser : choose the option for the queueing 
 ##################################################################################
@@ -313,6 +348,11 @@ class QueueParser(object):
                 copyVarsToObjectByName(self,["queue"],inputvariables,optional=True)		
 		if self.queue=="external":
                 	copyVarsToObjectByName(self,["queuetemplate"],inputvariables)		
+	                if os.path.isfile(os.path.join(os.getcwd(),self.queuetemplate))==False:
+	                        print "  File ",os.path.join(os.getcwd(),self.queuetemplate)," is not there "
+       		                sys.exit(2)
+                	else: #reassign the full path
+                        	self.topology=os.path.join(os.getcwd(),self.queuetemplate)	
 		if self.queue=="internal":
                 	copyVarsToObjectByName(self,["nmaxprocs"],inputvariables)		
 	
@@ -378,14 +418,15 @@ def doOptimization(argv):
 	# 
 	if myString.restart==True:
 		print "This is a restart run!"
+		myString.setDirs()
+		# TODO: reload string for a restart: just check the previous round is there and infer the round number
 		pass
 	else:
+		# setup initial conditions: put the images in the directories 
 		print "This run start from scratch!"
-		
-	#
-	# create the directories
-	#
-
+                myString.round=1
+		myString.createDirs()
+                myString.loadStringIntoWorkdirs()	
 	#
        	# main loop
 	#
