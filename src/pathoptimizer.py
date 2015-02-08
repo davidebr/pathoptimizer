@@ -2,6 +2,7 @@
 import sys
 import os
 import getopt
+import shutil
 import numpy
 import time
 import subprocess
@@ -330,12 +331,12 @@ PATHMSD ...
   REFERENCE={reference}	
   LAMBDA={lambdaval}	
 ... PATHMSD
-uwall: UPPER_WALLS ARG=path.sss,path.zzz AT={sval},0. KAPPA={springconstant_s},{springconstant_z} EXP=2
-PRINT ARG=path_restraint,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+uwall: UPPER_WALLS ARG=path.sss,path.zzz AT={sval},0. KAPPA={springconstant_s},{springconstant_z} EXP=2,2
+PRINT ARG=path.*,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
 #
 # this below is for a statistics on the bias
 #
-avg_spring: AVERAGE ARG=path_restraint,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
+avg_spring: AVERAGE ARG=path.*,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
 PRINT ARG=(avg_spring\.+) STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
 #
 # this below is for a statistics on the derivatives
@@ -359,7 +360,38 @@ PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
         	}
         	f.write(filecontent.format(**context))
 		f.close()
+        def prepareUmbrellas(self,myMDParser):
+		""" prepares the umbrella sampling runs (md engine related)"""	
+                os.chdir(self.workdir)
+		for i in range (0,len(self.imagelist)):
+			os.chdir(self.imagelist[i].dirname)		
+			########################################
+			# prepare the MD input for this image
+			########################################
+			myMDParser.printMDInput(self.round,self.rootdir)
+			########################################
+			# move the coordinates in the right place
+			########################################
+		        myMDParser.copyStart(i,self.round,self.rootdir)
+			# note that plumed-related is already there from the string handling
+			os.chdir(self.workdir)		
+		# now you should be in the root directory
+		os.chdir(self.rootdir)		
+		#sys.exit(2)	
+        def runDynamics(self,myMDParser,myQueue):
+		""" Just run the dynamics """
+		os.chdir(self.workdir)
+		# clean the queuestack
+		for i in range (0,len(self.imagelist)):
+			os.chdir(self.imagelist[i].dirname)		
+			myMDParser.programLauncher(self.rootdir,self.workdir,i+1,myQueue);
+			os.chdir(self.workdir)
+		# according to the queue system, take care of execution
 
+		# copy/rename data if needed
+
+		# go back home
+		os.chdir(self.rootdir)		
 
 ##################################################################################
 # MDParserClass 
@@ -411,12 +443,145 @@ class MDParserClass(object):
                 os.environ["GMXLDLIB"]=os.path.join(self.gmxdir,"lib")
                 os.environ["GMXDATA"]=os.path.join(self.gmxdir+"share")
 		# programs must have path that refers to the 	
-		if os.path.isfile(os.path.join(os.path.join,"/bin",self.preprocessor))==False:
-			print "  File ",os.path.join(os.getcwd(),self.preprocessor)," is not there "
+		if os.path.isfile(os.path.join(os.environ.get("GMXBIN"),self.preprocessor))==False:
+			print "  File ",os.path.join(os.environ.get("GMXBIN"),self.preprocessor)," is not there "
 			sys.exit(2)
-		if os.path.isfile(os.path.join(os.path.join,"/bin",self.trjconv))==False:
-			print "  File ",os.path.join(os.getcwd(),self.trjconv)," is not there "
+		if os.path.isfile(os.path.join(os.environ.get("GMXBIN"),self.trjconv))==False:
+			print "  File ",os.path.join(os.environ.get("GMXBIN"),self.trjconv)," is not there "
 			sys.exit(2)
+		# the programpath
+		if os.path.isfile(os.path.join(os.environ.get("GMXBIN"),self.programpath))==False:
+			print "  File ",os.path.join(os.environ.get("GMXBIN"),self.programpath)," is not there "
+			sys.exit(2)
+		self.programpath=os.path.join(os.environ.get("GMXBIN"),self.programpath)
+		self.trjconv=os.path.join(os.environ.get("GMXBIN"),self.trjconv)
+		self.preprocessor=os.path.join(os.environ.get("GMXBIN"),self.preprocessor)
+	
+			
+	def printMDInput(self,round,rootdir):
+		"""prepare the md input in cwd according to the parameters provided"""
+		print "  Preparing MD input for "+self.program
+		if self.program=="GROMACS":
+			print "  This prepare a GROMACS input"
+                        m=open("md.mdp","w") 
+ 		 	if os.path.isfile(self.template)==False:
+				print "the template input file is not existing: " +rootdir+"/"+self.template
+				sys.exit(2)	
+                        f=open(self.template,"r") 
+
+			#m.write("outputname  outcoord_"+str(round)+"\n")
+			#m.write("coordinates  coord_"+str(round)+".coor \n")
+ 		 	if os.path.isfile(self.topology)==False:
+				print "the topology file is not existing: "+self.topology
+				sys.exit(2)	
+
+ 			# read the old parameter file and substitute the new one: keep the xtc for dumping 
+                        m.write("nsteps = "+str(self.steps)+"\n") 
+                        for line in f:
+				# split into fields
+				fields=line.split()	
+				#for ff in fields:
+                                ind1=line.find("nsteps")
+				if ind1 <0  :
+					m.write(line)
+			m.close()	
+			m=open("gromacs_paramline","w")
+                        m.write(" -s topol.tpr  -x outcoord_"+str(round)+".xtc -c outcoord_"+str(round)+".gro -plumed plumed.dat ")
+			m.close()	
+			# do the grompp later in the real execution
+		else:
+			print "ERROR: the program "+self.program+" is not known "
+			sys.exit() 
+
+	def copyStart(self,index,round,rootdir):
+		""" copy the start conformation prior to start (preprocess and) dynamics"""
+		# if this is the round that means that the initial files should be in the root directory and 
+		# not in the store directory
+		if(round==1):
+			print "copying from the starting points"		 
+			if(self.program=="GROMACS"):
+				myfile=os.path.join(rootdir,"coor_"+str(index+1)+".gro")
+				if os.path.isfile(myfile)==False:
+                                	print "the file "+myfile+" is not existing"
+                                	sys.exit(2)	
+				shutil.copy2(myfile,os.getcwd())
+				# now make the grompp
+				# you need the grompp, the top, the gro  
+				mycommand=self.preprocessor+" -f md.mdp  -c coor_1.gro -p "+self.topology
+ 				print mycommand
+				proc=subprocess.Popen(mycommand,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
+				f=open("grompp.stdout","w")	
+				for l in proc.stdout.readlines():
+				  f.write(l)
+				f.close()
+				f=open("grompp.stderr","w")	
+				for l in proc.stderr.readlines():
+				  f.write(l)
+				f.close()
+			else:	
+				print "PROGRAM NOT KNOWN"
+				sys.exit()	
+
+		else:
+			# the file should be already in place (as restart or from the previous run which will be newly carried out) 
+			if(self.program=="GROMACS"):
+				file="coor_"+str(round)+".gro"
+				if os.path.isfile(file)==False:
+					print "Startfile not in place"
+					sys.exit()	
+                                # bring evthing into the box? 
+				mycommand=self.preprocessor+" -f md.mdp  -c coor_"+str(round)+".gro -p "+self.structure 
+ 				print mycommand
+				proc=subprocess.Popen(mycommand,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
+				f=open("grompp.stdout","w")	
+				for l in proc.stdout.readlines():
+				  f.write(l)
+				f.close()
+				f=open("grompp.stderr","w")	
+				for l in proc.stderr.readlines():
+				  f.write(l)
+				f.close()
+			else:	
+				print "PROGRAM NOT KNOWN"
+				sys.exit()	
+	def programLauncher(self,rootdir,workdir,index,myQueue):
+		"""takes care of launching the md program"""
+		this_dir=os.getcwd()
+		print "NOW I AM IN DIR: "+this_dir
+		if(self.program=="GROMACS"):
+     			f=open("gromacs_paramline","r")
+                        for line in f:
+                                command=self.preprogram+" "+self.programpath+line
+                                break
+                        f.close()
+
+		if myQueue.queue == "serial" :	
+			print "NOW I AM RUNNING SERIALLY: "+command
+			sys.stdout.flush()
+			# just run the command
+                        proc=subprocess.Popen(command,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
+                        f=open("run.stdout","w")
+                        for l in proc.stdout.readlines():
+                          f.write(l)
+                        f.close()
+                        f=open("run.stderr","w")
+                        for l in proc.stderr.readlines():
+                          f.write(l)
+                        f.close()
+		elif myQueue.queue == "internal" : 
+			print "NOW I AM PREPARING TO RUN WITH INTERNAL QUEUE: "+command
+			sys.stdout.flush()
+			print "not implemented yet"
+			sys.exit()
+			# prepare the script and submit it to the internal queue system
+		elif myQueue.queue == "external" : 
+			print "NOW I AM PREPARING TO RUN WITH EXTERNAL QUEUE SYSTEM : "+command
+			sys.stdout.flush()
+			print "not implemented yet"
+			sys.exit()
+			# prepare the script and submit it to the exernal queue system (PBS) by using the provided template
+
+
 ##################################################################################
 # QueueParser : choose the option for the queueing 
 ##################################################################################
@@ -506,6 +671,7 @@ def doOptimization(argv):
 		print "This is a restart run!"
 		myString.setDirs()
 		# TODO: reload string for a restart: just check the previous round is there and infer the round number
+		# assign myString.round
 		sys.exit()
 		pass
 	else:
@@ -517,18 +683,21 @@ def doOptimization(argv):
 	#
        	# main loop
 	#
-	for i in range(myString.round,myString.round+myString.maxrounds): 
-		print "Round ",i
-		# prepare input for md
-                print "************Preparing the umbrellas*************"	
-		#myString.prepareUmbrellas(myMDParser)
+	startround=myString.round
+	for myString.round in range(startround,startround+myString.maxrounds): 
+		print "Round ",myString.round
 
-		# just run 
+                print "************Preparing the umbrellas*************"	
+		myString.prepareUmbrellas(myMDParser)
+
+                print "************Running the dynamics*************"
+                myString.runDynamics(myMDParser,myQueue)
+
 		# read the derivatives 
 		# calculate the mean forces
 		# evolve
 		# reparametrize (now externally)
-		
+		sys.exit()	
 
 
 		# reinitialize

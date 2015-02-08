@@ -13,9 +13,9 @@ optends=True
 #springconstant=1500
 #restart=True
 pathtype="PCV"
-springconstant_s=2000
-springconstant_z=4000
-lambdaval=100
+springconstant_s=20
+springconstant_z=1000
+lambdaval=5230
 #############################
 ## input file
 #############################
@@ -23,9 +23,9 @@ program="GROMACS"
 template="md.mdp" 
 topology="topol.top"  
 steps=3000 
-#programpath="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/mdrun_mpi_d"
+plumed_append_library_path="/Users/davidebranduardi/Programs/plumed2/src/lib/"
 programpath="mdrun_mpi_d"
-preprocessor="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/grompp_mpi_d" 
+preprocessor="grompp_mpi_d" 
+trjconv="trjconv_mpi_d" 
 gmxdir="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install"
-trjconv="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/trjconv_mpi_d" 
-#preprogram=" "
+preprogram="export DYLD_LIBRARY_PATH=\"/Users/davidebranduardi/Programs/plumed2/src/lib/:$DYLD_LIBRARY_PATH\" ; "
