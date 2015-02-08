@@ -283,49 +283,83 @@ class StringClass(object):
 			f.write("END\n")
 		f.close()
 
+	# TODO: mechanism for skipping the initial part
 	def dumpSOMAinput(self,workdir,dirname,reference):
 		"""prepare the SOMA input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
-		f.write("RMSD ...\n")
-		f.write("  LABEL=rmsd \n")
-		f.write("  REFERENCE "+reference+"\n")
-		f.write("  TYPE=OPTIMAL\n")	
-		f.write("...RMSD \n");
-		f.write("uwall: UPPER_WALLS ARG=rmsd AT=0 KAPPA="+str(self.springconstant)+" EXP=2 \n")	
-		f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
-                f.write("#\n# THIS BELOW IS THE STATISTICS PART FOR THE SPRING CALCULATION\n#\n")	
-		f.write("avg_spring: AVERAGE ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
-		f.write("PRINT ARG=(avg_spring\.+) STRIDE="+str(self.dumpfreq)+" 100 FILE=colvar FMT=%12.8f\n")
-		f.write("#\n# THIS BELOW IS THE STATISTICS PART FOR THE DERIVATIVES #\n#\n")
-		f.write("RMSD ...\n")
-		f.write("  LABEL=rmsd_stat \n")
-		f.write("  REFERENCE "+reference+"\n")
-		f.write("  SOMA_DERIVATIVES\n")	
-		f.write("  TYPE=OPTIMAL\n")	
-		f.write("...RMSD \n");
-		f.write("avg: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
-		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
+		filecontent="""
+RMSD ...
+  LABEL=rmsd
+  REFERENCE={reference}	
+  TYPE=OPTIMAL	
+... RMSD
+uwall: UPPER_WALLS ARG=rmsd AT=0 KAPPA={springconstant} EXP=2
+PRINT ARG=rmsd_restraint,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+#
+# this below is for a statistics on the bias
+#
+avg_spring: AVERAGE ARG=rmsd_restraint,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg_spring\.+) STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+#
+# this below is for a statistics on the derivatives
+#
+RMSD ...
+  LABEL=rmsd_stat
+  REFERENCE={reference}
+  SOMA_DERIVATIVES
+  TYPE=OPTIMAL
+... RMSD
+avg: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
+"""
+        	context = {
+        	        "reference":reference,
+        	        "dumpfreq":self.dumpfreq,
+        	        "springconstant":self.springconstant
+        	}
+        	f.write(filecontent.format(**context))
 		f.close()
+	
+	# TODO: mechanism for skipping the initial part
 	def dumpPCVinput(self,workdir,dirname,reference,sval):
 		"""prepare the PCV input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
-		f.write("PATHMSD ...\n")
-		f.write(" LABEL=path \n") 
-		f.write(" REFERENCE="+reference+" \n")
-		f.write(" LAMBDA="+str(self.lambdaval+0.)+"\n")
-		f.write("... PATHMSD\n")
-		f.write("uwall: UPPER_WALLS ARG=path.sss,path.zzz AT="+str(sval+0.)+",0 KAPPA="+str(self.springconstant_s+0.)+","+str(self.springconstant_z+0.)+" EXP=2 \n")	
-                f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
-		f.write("#\n# THIS BELOW IS THE STATISTICS PART \n#\n")
-		f.write("PATHMSD ...\n")
-		f.write(" LABEL=path_stat \n") 
-		f.write(" REFERENCE="+reference+" \n")
-		f.write(" REFERENCE_DERIVATIVES\n ")
-		f.write(" LAMBDA="+str(self.lambdaval+0.)+"\n")
-		f.write("... PATHMSD\n")
-		f.write("avg: AVERAGE ARG=(path_stat\.sss_refder_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
-		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
+		filecontent="""
+PATHMSD ...
+  LABEL=path
+  REFERENCE={reference}	
+  LAMBDA={lambdaval}	
+... PATHMSD
+uwall: UPPER_WALLS ARG=path.sss,path.zzz AT={sval},0. KAPPA={springconstant_s},{springconstant_z} EXP=2
+PRINT ARG=path_restraint,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+#
+# this below is for a statistics on the bias
+#
+avg_spring: AVERAGE ARG=path_restraint,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg_spring\.+) STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+#
+# this below is for a statistics on the derivatives
+#
+PATHMSD ...
+  LABEL=path_stat
+  REFERENCE={reference}
+  LAMBDA={lambdaval}
+  REFERENCE_DERIVATIVES
+... PATHMSD
+avg: AVERAGE ARG=(path_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
+"""
+        	context = {
+        	        "reference":reference,
+        	        "dumpfreq":self.dumpfreq,
+        	        "springconstant_s":self.springconstant_s,
+        	        "springconstant_z":self.springconstant_z,
+        	        "lambdaval":self.lambdaval,
+        	        "sval":str(sval+0.),
+        	}
+        	f.write(filecontent.format(**context))
 		f.close()
+
 
 ##################################################################################
 # MDParserClass 
@@ -487,12 +521,14 @@ def doOptimization(argv):
 		print "Round ",i
 		# prepare input for md
                 print "************Preparing the umbrellas*************"	
+		#myString.prepareUmbrellas(myMDParser)
 
 		# just run 
 		# read the derivatives 
 		# calculate the mean forces
 		# evolve
-		# reparametrize
+		# reparametrize (now externally)
+		
 
 
 		# reinitialize

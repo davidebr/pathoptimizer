@@ -9,13 +9,13 @@ workdir="mywork"
 dumpfreq=100
 evolstep=0.00125  
 optends=True
-pathtype="SOMA"
-springconstant=1500
+#pathtype="SOMA"
+#springconstant=1500
 #restart=True
-#pathtype="PCV"
-#springconstant_s=2000
-#springconstant_z=4000
-#lambdaval=100
+pathtype="PCV"
+springconstant_s=2000
+springconstant_z=4000
+lambdaval=100
 #############################
 ## input file
 #############################
