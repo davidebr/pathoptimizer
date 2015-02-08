@@ -286,22 +286,43 @@ class StringClass(object):
 	def dumpSOMAinput(self,workdir,dirname,reference):
 		"""prepare the SOMA input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
-		f.write("rmsd: RMSD REFERENCE "+reference+" TYPE=OPTIMAL\n")	
+		f.write("RMSD ...\n")
+		f.write("  LABEL=rmsd \n")
+		f.write("  REFERENCE "+reference+"\n")
+		f.write("  TYPE=OPTIMAL\n")	
+		f.write("...RMSD \n");
 		f.write("uwall: UPPER_WALLS ARG=rmsd AT=0 KAPPA="+str(self.springconstant)+" EXP=2 \n")	
 		f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
-		f.write("# THIS BELOW IS THE STATISTICS PART \n")
-		f.write("rmsd_stat: RMSD REFERENCE "+reference+" SOMA_DERIVATIVES TYPE=OPTIMAL\n")	
+                f.write("#\n# THIS BELOW IS THE STATISTICS PART FOR THE SPRING CALCULATION\n#\n")	
+		f.write("avg_spring: AVERAGE ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
+		f.write("PRINT ARG=(avg_spring\.+) STRIDE="+str(self.dumpfreq)+" 100 FILE=colvar FMT=%12.8f\n")
+		f.write("#\n# THIS BELOW IS THE STATISTICS PART FOR THE DERIVATIVES #\n#\n")
+		f.write("RMSD ...\n")
+		f.write("  LABEL=rmsd_stat \n")
+		f.write("  REFERENCE "+reference+"\n")
+		f.write("  SOMA_DERIVATIVES\n")	
+		f.write("  TYPE=OPTIMAL\n")	
+		f.write("...RMSD \n");
 		f.write("avg: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
 		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
 		f.close()
 	def dumpPCVinput(self,workdir,dirname,reference,sval):
 		"""prepare the PCV input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
-		f.write("path: PATHMSD REFERENCE="+reference+" LAMBDA="+str(self.lambdaval+0.)+"\n")
+		f.write("PATHMSD ...\n")
+		f.write(" LABEL=path \n") 
+		f.write(" REFERENCE="+reference+" \n")
+		f.write(" LAMBDA="+str(self.lambdaval+0.)+"\n")
+		f.write("... PATHMSD\n")
 		f.write("uwall: UPPER_WALLS ARG=path.sss,path.zzz AT="+str(sval+0.)+",0 KAPPA="+str(self.springconstant_s+0.)+","+str(self.springconstant_z+0.)+" EXP=2 \n")	
                 f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
-		f.write("# THIS BELOW IS THE STATISTICS PART \n")
-		f.write("path_stat:  PATHMSD REFERENCE="+reference+" LAMBDA="+str(self.lambdaval+0.)+" REFERENCE_DERIVATIVES\n")
+		f.write("#\n# THIS BELOW IS THE STATISTICS PART \n#\n")
+		f.write("PATHMSD ...\n")
+		f.write(" LABEL=path_stat \n") 
+		f.write(" REFERENCE="+reference+" \n")
+		f.write(" REFERENCE_DERIVATIVES\n ")
+		f.write(" LAMBDA="+str(self.lambdaval+0.)+"\n")
+		f.write("... PATHMSD\n")
 		f.write("avg: AVERAGE ARG=(path_stat\.sss_refder_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
 		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
 		f.close()
@@ -468,7 +489,12 @@ def doOptimization(argv):
                 print "************Preparing the umbrellas*************"	
 
 		# just run 
-		# postprocess
+		# read the derivatives 
+		# calculate the mean forces
+		# evolve
+		# reparametrize
+
+
 		# reinitialize
 	
                 # old ORAC trick: check if a "STOP" file is there
