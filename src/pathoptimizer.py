@@ -114,19 +114,25 @@ def copyVarsToObjectByName(sinkobject,listvars,sourceobject,optional=False):
   		try:
        	               getattr(sinkobject, var)
 		except AttributeError:
+			alreadyassigned=False
 			pass
 		else:	
-			print "Name \""+var+"\" already assigned to object  :  ",getattr(sinkobject, var)
+			print "  Name \""+var+"\" already assigned to object  :  ",getattr(sinkobject, var)
+			alreadyassigned=True
 		try:
 			getattr(sourceobject, var)
 		except AttributeError:
 			if optional==False:	
-				print "Name \""+var+"\" not stated in input and this is needed"	
+				print "  Name \""+var+"\" not stated in input and this is needed"	
 				sys.exit(2)
 			else: 
-                                print "Name \""+var+"\" not stated in input but is optional, so who cares? "	
-			      
+				if alreadyassigned==True:
+                               	 	print "  Name \""+var+"\" not stated in input but is already assigned "	
+				else:
+                                	print "  Name \""+var+"\" not stated in input but is optional, so who cares? "	
 				acquire=False	
+		else:
+			if alreadyassigned==True: print "Reassigning the variable..." 
 		if acquire==True:	
 			setattr(sinkobject,var,getattr(sourceobject, var))
 			print "  Variable \""+var+"\" acquired from input: ",getattr(sinkobject,var)
@@ -195,6 +201,8 @@ class StringClass(object):
 		# type of optimization: soma or pathcvs
 		self.optimizationType(inputvariables)
        	 	self.rootdir=os.getcwd()
+		self.restart=False
+		copyVarsToObjectByName(self,["restart"],inputvariables,optional=True)
 
 	def optimizationType(self,inputvariables):
 		""" scan the inputlines and see if you have Soma or Pathcvs: then parse the correct arguments """
@@ -206,6 +214,7 @@ class StringClass(object):
                         print "This is a PCV run "
 	                copyVarsToObjectByName(self,["springconstant_s"],inputvariables)
 	                copyVarsToObjectByName(self,["springconstant_z"],inputvariables)
+	                copyVarsToObjectByName(self,["lambda"],inputvariables)
 		else:
 			print "There is no such pathtype !!! ",getattr(self,"pathtype")
 			sys.exit(2)
@@ -240,12 +249,25 @@ class MDParserClass(object):
 		""" define specific GROMACS junk """
 		# this must be specified
 		copyVarsToObjectByName(self,["topology","preprocessor","trjconv","gmxdir"],inputvariables)
+		# now check they exist for sure
+		# topology must be local
+		if os.path.isfile(os.path.join(os.getcwd(),self.topology))==False:	
+			print "  File ",os.path.join(os.getcwd(),self.topology)," is not there "			
+			sys.exit(2)
+		else: #reassign the full path
+			self.topology=os.path.join(os.getcwd(),self.topology)
 		# set the environment variables
                 os.environ["GMXDIR"]=self.gmxdir
-                os.environ["GMXBIN"]=self.gmxdir+"/bin"
-                os.environ["GMXLDLIB"]=self.gmxdir+"/lib"
-                os.environ["GMXDATA"]=self.gmxdir+"/share"
-
+                os.environ["GMXBIN"]=os.path.join(self.gmxdir,"bin")
+                os.environ["GMXLDLIB"]=os.path.join(self.gmxdir,"lib")
+                os.environ["GMXDATA"]=os.path.join(self.gmxdir+"share")
+		# programs must have path that refers to the 	
+		if os.path.isfile(os.path.join(os.path.join,"/bin",self.preprocessor))==False:
+			print "  File ",os.path.join(os.getcwd(),self.preprocessor)," is not there "
+			sys.exit(2)
+		if os.path.isfile(os.path.join(os.path.join,"/bin",self.trjconv))==False:
+			print "  File ",os.path.join(os.getcwd(),self.trjconv)," is not there "
+			sys.exit(2)
 #	def createDirs(self):
 #		""" this should prepare and create the dirs"""	
 #		# check if the working dir exist 
@@ -298,8 +320,6 @@ class QueueParser(object):
 # PathOptimizer object
 ##################################################################################
 class PathOptimizer(object):
-	restart=False
-
 	def __init__(self, argv):	
 		""" initialize the object  just reading filename and evtl if restart """
 		print "Initializing path optimizer ",argv
@@ -313,7 +333,6 @@ class PathOptimizer(object):
 	                self.usage()
 	                sys.exit()
 	        for o, a in opts:
-			print "O ",o,a
 	                if o == "-f":
 	                        print "found input file: "+a
 	                        self.inputfile=a
@@ -352,8 +371,27 @@ def doOptimization(argv):
 	myMDParser= MDParserClass(po.inputvariables)
         print "************ QUEUE  PARSING               *************"
 	myQueue=QueueParser(po.inputvariables)
-       	# initial loop
+	#
+       	# initialize data structure 
+	# 
+	# TODO is restart? structure should be already there, just check it
+	# 
+	if myString.restart==True:
+		print "This is a restart run!"
+		pass
+	else:
+		print "This run start from scratch!"
+		
+	#
+	# create the directories
+	#
+
+	#
+       	# main loop
+	#
+	
         sys.exit()
+
 
 ##################################################################################
 # this is the main command executed
