@@ -219,7 +219,7 @@ class StringClass(object):
 			self.pathtype="PCV"
 	                copyVarsToObjectByName(self,["springconstant_s"],inputvariables)
 	                copyVarsToObjectByName(self,["springconstant_z"],inputvariables)
-	                copyVarsToObjectByName(self,["lambda"],inputvariables)
+	                copyVarsToObjectByName(self,["lambdaval"],inputvariables)
 		else:
 			print "There is no such pathtype !!! ",getattr(self,"pathtype")
 			sys.exit(2)
@@ -267,9 +267,11 @@ class StringClass(object):
 			if self.pathtype=="PCV": # in pcvs all images are loaded 
 				self.imagelist[i].filename=os.path.join(self.workdir,self.imagelist[i].dirname,"iter_"+str(self.round)+".dat")
 				self.dumpImages(self.imagelist[i].filename,range(0,len(self.imagelist)))
+				self.dumpPCVinput(self.workdir,self.imagelist[i].dirname,self.imagelist[i].filename,i+1)	
 			elif self.pathtype=="SOMA": # soma must be splitted per image
 				self.imagelist[i].filename=os.path.join(self.workdir,self.imagelist[i].dirname,"iter_"+str(self.round)+"_"+str(i+1)+".dat")
 				self.dumpImages(self.imagelist[i].filename,[i])
+				self.dumpSOMAinput(self.workdir,self.imagelist[i].dirname,self.imagelist[i].filename)	
 
 	def dumpImages(self,filename,mylist):
 		"""Dump a pdb on the filename with all the images on the list""" 
@@ -278,7 +280,30 @@ class StringClass(object):
 			for j in range(len(self.imagelist[i].details)):					
 				buf="%s%8.3f%8.3f%8.3f%6.2f%6.2f\n"%(self.imagelist[i].details[j],self.imagelist[i].x[j],self.imagelist[i].y[j],self.imagelist[i].z[j],self.imagelist[i].occ[j],self.imagelist[i].beta[j]) 
 				f.write(buf)
-			f.write("END")
+			f.write("END\n")
+		f.close()
+
+	def dumpSOMAinput(self,workdir,dirname,reference):
+		"""prepare the SOMA input for plumed2"""
+		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
+		f.write("rmsd: RMSD REFERENCE "+reference+" TYPE=OPTIMAL\n")	
+		f.write("uwall: UPPER_WALLS ARG=rmsd AT=0 KAPPA="+str(self.springconstant)+" EXP=2 \n")	
+		f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
+		f.write("# THIS BELOW IS THE STATISTICS PART \n")
+		f.write("rmsd_stat: RMSD REFERENCE "+reference+" SOMA_DERIVATIVES TYPE=OPTIMAL\n")	
+		f.write("avg: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
+		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
+		f.close()
+	def dumpPCVinput(self,workdir,dirname,reference,sval):
+		"""prepare the PCV input for plumed2"""
+		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
+		f.write("path: PATHMSD REFERENCE="+reference+" LAMBDA="+str(self.lambdaval+0.)+"\n")
+		f.write("uwall: UPPER_WALLS ARG=path.sss,path.zzz AT="+str(sval+0.)+",0 KAPPA="+str(self.springconstant_s+0.)+","+str(self.springconstant_z+0.)+" EXP=2 \n")	
+                f.write("PRINT ARG=rmsd_restraint,uwall.* STRIDE="+str(self.dumpfreq)+" FILE=colvar FMT=%12.8f\n")
+		f.write("# THIS BELOW IS THE STATISTICS PART \n")
+		f.write("path_stat:  PATHMSD REFERENCE="+reference+" LAMBDA="+str(self.lambdaval+0.)+" REFERENCE_DERIVATIVES\n")
+		f.write("avg: AVERAGE ARG=(path_stat\.sss_refder_.+) STRIDE="+str(self.dumpfreq)+" USE_ALL_DATA\n")
+		f.write("PRINT ARG=(avg\..+) STRIDE="+str(self.dumpfreq)+" FILE=derivatives_averaged FMT=%12.8f")
 		f.close()
 
 ##################################################################################
@@ -293,6 +318,12 @@ class MDParserClass(object):
 		# preprogram: something like "mpirun -np 4" or mpiexec?
 		self.preprogram=""
 		copyVarsToObjectByName(self,["preprogram"],inputvariables,optional=True)
+		self.template=os.path.join(os.getcwd(),self.template)
+		if os.path.isfile(self.template)=="False":
+			print "  File ",self.template," is not there"
+			sys.exit(2)
+		else:
+			print "  File template : ",self.template
 		#
 		# program-dependent customization
 		# i.e. gromacs requires preprocessing stage, while namd requires parameter files and psf
@@ -420,6 +451,7 @@ def doOptimization(argv):
 		print "This is a restart run!"
 		myString.setDirs()
 		# TODO: reload string for a restart: just check the previous round is there and infer the round number
+		sys.exit()
 		pass
 	else:
 		# setup initial conditions: put the images in the directories 
@@ -430,7 +462,19 @@ def doOptimization(argv):
 	#
        	# main loop
 	#
+	for i in range(myString.round,myString.round+myString.maxrounds): 
+		print "Round ",i
+		# prepare input for md
+                print "************Preparing the umbrellas*************"	
+
+		# just run 
+		# postprocess
+		# reinitialize
 	
+                # old ORAC trick: check if a "STOP" file is there
+                if os.path.isfile("STOP")==True:
+                        print "************FOUND STOP FILE: Game Over! *************"
+                        sys.exit()
         sys.exit()
 
 
