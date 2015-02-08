@@ -14,11 +14,12 @@ springconstant=1500
 #############################
 ## input file
 #############################
-#program GROMACS 
-#template md.mdp 
-#topology topol.top  
-#steps 3000 
-#programpath    /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/mdrun_mpi_d
-#preprocessor   /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/grompp_mpi_d 
-#gmxdir         /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install
-#trjconv        /Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/trjconv_mpi_d 
+program="GROMACS" 
+template="md.mdp" 
+topology="topol.top"  
+steps=3000 
+programpath="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/mdrun_mpi_d"
+preprocessor="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/grompp_mpi_d" 
+gmxdir="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install"
+trjconv="/Users/davidebranduardi/Programs/plumed2/codes/gromacs/gromacs-4.6.5_shared_llvm/build_llvm/install/bin/trjconv_mpi_d" 
+preprogram=" "
