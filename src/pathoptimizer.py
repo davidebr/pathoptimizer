@@ -289,29 +289,31 @@ class StringClass(object):
 		"""prepare the SOMA input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
 		filecontent="""
+#
+# this imposes just the bias
+#
 RMSD ...
   LABEL=rmsd
   REFERENCE={reference}	
   TYPE=OPTIMAL	
+  SQUARED
 ... RMSD
-uwall: UPPER_WALLS ARG=rmsd AT=0 KAPPA={springconstant} EXP=2
-PRINT ARG=rmsd_restraint,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+wall: MOVINGRESTRAINT ARG=rmsd STEP0=0 AT0=0. KAPPA0={springconstant}
 #
 # this below is for a statistics on the bias
-#
-avg_spring: AVERAGE ARG=rmsd_restraint,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg_spring\.+) STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
-#
-# this below is for a statistics on the derivatives
 #
 RMSD ...
   LABEL=rmsd_stat
   REFERENCE={reference}
   SOMA_DERIVATIVES
   TYPE=OPTIMAL
+  SQUARED
 ... RMSD
-avg: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
+meanforce:  MATHEVAL ARG=rmsd_stat.rmsd VAR=d  PERIODIC=NO FUNC={springconstant}*d
+avg_meanforces: AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={dumpfreq} USE_ALL_DATA
+avg_derivatives: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8f
+PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8f
 """
         	context = {
         	        "reference":reference,
@@ -326,20 +328,17 @@ PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
 		"""prepare the PCV input for plumed2"""
 		f=open(os.path.join(workdir,dirname,"plumed.dat"),"w")	
 		filecontent="""
+#
+# this imposes just the bias
+#
 PATHMSD ...
   LABEL=path
-  REFERENCE={reference}	
-  LAMBDA={lambdaval}	
+  REFERENCE={reference}
+  LAMBDA={lambdaval}
 ... PATHMSD
-uwall: UPPER_WALLS ARG=path.sss,path.zzz AT={sval},0. KAPPA={springconstant_s},{springconstant_z} EXP=2,2
-PRINT ARG=path.*,uwall.* STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
+wall: MOVINGRESTRAINT ARG=path.sss,path.zzz STEP0=0 AT0={sval},0. KAPPA0={springconstant_s},{springconstant_z}
 #
 # this below is for a statistics on the bias
-#
-avg_spring: AVERAGE ARG=path.*,uwall.* STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg_spring\.+) STRIDE={dumpfreq} FILE=colvar FMT=%12.8f
-#
-# this below is for a statistics on the derivatives
 #
 PATHMSD ...
   LABEL=path_stat
@@ -347,8 +346,12 @@ PATHMSD ...
   LAMBDA={lambdaval}
   REFERENCE_DERIVATIVES
 ... PATHMSD
-avg: AVERAGE ARG=(path_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg\..+) STRIDE={dumpfreq} FILE=derivatives_averaged FMT=%12.8f
+meanforce_s:  MATHEVAL ARG=path_stat.sss VAR=s  PERIODIC=NO FUNC={springconstant_s}*({sval}-s)
+meanforce_z:  MATHEVAL ARG=path_stat.zzz VAR=z  PERIODIC=NO FUNC={springconstant_z}*z
+avg_meanforces: AVERAGE ARG=path_stat.sss,path_stat.zzz,meanforce_s,meanforce_z STRIDE={dumpfreq} USE_ALL_DATA
+avg_derivatives: AVERAGE ARG=(path_stat\.sss_refder_.+|path_stat\.zzz_refder_.+) STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8f
+PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8f
 """
         	context = {
         	        "reference":reference,
@@ -504,7 +507,7 @@ class MDParserClass(object):
 				if os.path.isfile(myfile)==False:
                                 	print "the file "+myfile+" is not existing"
                                 	sys.exit(2)	
-				shutil.copy2(myfile,os.getcwd())
+				shutil.copy2(myfile,os.path.join(os.getcwd(),"coor_1.gro"))
 				# now make the grompp
 				# you need the grompp, the top, the gro  
 				mycommand=self.preprocessor+" -f md.mdp  -c coor_1.gro -p "+self.topology
