@@ -2,6 +2,7 @@
 # specifications for the string 
 #############################
 discard=0.1
+test=True
 string="string.pdb" 
 maxrounds=30
 storedir="store"

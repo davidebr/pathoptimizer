@@ -104,6 +104,22 @@ class Queue(object):
 		pass
 
 ##################################################################################
+#
+##################################################################################
+def readPlumedPrintOutput(filename):
+		if os.path.isfile(filename)=="False":
+			return False
+		else :
+			f=open(filename,"r")
+			for line in f:
+				if line[0:2]=="#!": # this is the header
+					header=line.split()[3:] #exclude time
+				else:
+					data=line.split()[1:]  # I overwrite this since the average is supposed to be already calculated by plumed
+			f.close()
+		return [header,data]
+
+##################################################################################
 # convenience function : just paste variables names and content from an environment 
 # to another: useful to parse a pythonic input and spread the content into
 # the various objects
@@ -181,6 +197,28 @@ class ImageClass(object):
 		self.occ=[]
 		self.beta=[]
 		self.details=[]
+	def parseRunOutput(self,parentString,index):
+		""" retrieve the output and attach to the string according the type of calculation performed (SOMA/PCVs)"""
+                if  parentString.pathtype=="SOMA" :
+			print "  Retrieving SOMA statistics for image ",index
+			# average_meanforces 
+			a=readPlumedPrintOutput("average_meanforces")
+			assert isinstance(a, (list))  
+			self.meanforce=copy.deepcopy(a)
+			print a[0],a[1]
+			# average_derivatives 
+			a=readPlumedPrintOutput("average_derivatives")
+			assert isinstance(a, (list))  
+			self.derivatives=copy.deepcopy(a)
+			print a[0],a[1]
+			# average_outerproduct  
+			a=readPlumedPrintOutput("average_outerproduct")
+			assert isinstance(a, (list))  
+			self.outerproduct=copy.deepcopy(a)
+			print a[0],a[1]
+		elif parentString.pathtype=="PCV" :
+			print "  Retrieving PCV statistics for image ", index
+				
 ##################################################################################
 # the string is a collection of images plus information on how to run it
 # which dir, soma/pcv , spring constant(s)
@@ -190,7 +228,7 @@ class StringClass(object):
 	""" this class contains the whole string and the setup on directory organization"""
 	def __init__(self,inputvariables):
 		""" read the string from the inputlines"""
-
+		test=False
 		# these are the properties required for this input: if you need any new, just plug it in here: checks are automatically performed
 		needednames=["string","storedir","workdir","dumpfreq","evolstep","discard","maxrounds","optends"]
 
@@ -206,7 +244,7 @@ class StringClass(object):
 		self.storedir=os.path.join(self.rootdir,self.storedir)
 		self.workdir=os.path.join(self.rootdir,self.workdir)
 		self.restart=False
-		copyVarsToObjectByName(self,["restart"],inputvariables,optional=True)
+		copyVarsToObjectByName(self,["restart","test"],inputvariables,optional=True)
 
 	def optimizationType(self,inputvariables):
 		""" scan the inputlines and see if you have Soma or Pathcvs: then parse the correct arguments """
@@ -312,8 +350,14 @@ RMSD ...
 meanforce:  MATHEVAL ARG=rmsd_stat.rmsd VAR=d  PERIODIC=NO FUNC={springconstant}*d
 avg_meanforces: AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={dumpfreq} USE_ALL_DATA
 avg_derivatives: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8f
-PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8f
+PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
+PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8e
+#
+# this is the outer product for metrics scaling
+#
+outer: OUTERPRODUCT ARG=(rmsd_stat\.somader_.+)
+avg_outer: AVERAGE ARG=(outer\..+) STRIDE={dumpfreq} USE_ALL_DATA
+PRINT ARG=(avg_outer\..+) STRIDE={dumpfreq} FILE=average_outerproduct FMT=%12.8e
 """
         	context = {
         	        "reference":reference,
@@ -350,8 +394,8 @@ meanforce_s:  MATHEVAL ARG=path_stat.sss VAR=s  PERIODIC=NO FUNC={springconstant
 meanforce_z:  MATHEVAL ARG=path_stat.zzz VAR=z  PERIODIC=NO FUNC={springconstant_z}*z
 avg_meanforces: AVERAGE ARG=path_stat.sss,path_stat.zzz,meanforce_s,meanforce_z STRIDE={dumpfreq} USE_ALL_DATA
 avg_derivatives: AVERAGE ARG=(path_stat\.sss_refder_.+|path_stat\.zzz_refder_.+) STRIDE={dumpfreq} USE_ALL_DATA
-PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8f
-PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8f
+PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
+PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8e
 """
         	context = {
         	        "reference":reference,
@@ -365,6 +409,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		f.close()
         def prepareUmbrellas(self,myMDParser):
 		""" prepares the umbrella sampling runs (md engine related)"""	
+		if self.test: return 
                 os.chdir(self.workdir)
 		for i in range (0,len(self.imagelist)):
 			os.chdir(self.imagelist[i].dirname)		
@@ -383,6 +428,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		#sys.exit(2)	
         def runDynamics(self,myMDParser,myQueue):
 		""" Just run the dynamics """
+		if self.test: return 
 		os.chdir(self.workdir)
 		# clean the queuestack
 		for i in range (0,len(self.imagelist)):
@@ -395,6 +441,20 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 
 		# go back home
 		os.chdir(self.rootdir)		
+
+        def parseRunOutput(self,myMDParser):
+		""" Enter each dir and read the various infos """
+		os.chdir(self.workdir)
+		# clean the queuestack
+		for i in range (0,len(self.imagelist)):
+			os.chdir(self.imagelist[i].dirname)		
+			# pass the string itself to get the kind of run 
+			self.imagelist[i].parseRunOutput(self,i)
+			os.chdir(self.workdir)
+		# go back home
+		os.chdir(self.rootdir)		
+
+
 
 ##################################################################################
 # MDParserClass 
@@ -670,13 +730,16 @@ def doOptimization(argv):
 	# 
 	# TODO is restart? structure should be already there, just check it
 	# 
-	if myString.restart==True:
-		print "This is a restart run!"
+	if myString.restart==True or myString.test==True:
+		if myString.restart==True: 
+			print "This is a restart run!"
+			# TODO: reload string for a restart: just check the previous round is there and infer the round number
+			sys.exit()
+		if myString.test==True: 
+			print "This is a test run (i.e. does not run dynamics. Just uses the statistics that is already there)!"
+			# assign myString.round
+			myString.round=1
 		myString.setDirs()
-		# TODO: reload string for a restart: just check the previous round is there and infer the round number
-		# assign myString.round
-		sys.exit()
-		pass
 	else:
 		# setup initial conditions: put the images in the directories 
 		print "This run start from scratch!"
@@ -695,12 +758,13 @@ def doOptimization(argv):
 
                 print "************Running the dynamics*************"
                 myString.runDynamics(myMDParser,myQueue)
-
+		print "************Parse Outputs*************"
 		# read the derivatives 
+                myString.parseRunOutput(myMDParser)
 		# calculate the mean forces
 		# evolve
 		# reparametrize (now externally)
-		sys.exit()	
+		if myString.test==True: sys.exit()	
 
 
 		# reinitialize
