@@ -73,11 +73,13 @@ def alignFirstOntoSecond(r1,r2,al):
 	#print "ROTATION ",rotation
 	# now rotate running frame and dump it
 	# take the vector fresh
-	rr1=np.copy(r1.reshape((-1,3)))
 	rr1_al=np.empty(r1.size).reshape((-1,3))
-        for i in range(rr1.shape[0]): rr1_al[i,:]=np.dot(rotation,rr1[i,:]-com1)+com2	
+	distvect=np.empty(r1.size).reshape((-1,3))
+        for i in range(rr1.shape[0]): rr1_al[i,:]=np.dot(rotation,rr1[i,:])+com2	
+        for i in range(rr1.shape[0]): distvect[i,:]=rr1_al[i,:]-(rr2[i,:]+com2) 	
 	rr1_al=rr1_al.reshape((-1))
-	dd={"dist":dist,"rotation":rotation,"rotated":rr1_al}
+	distvect=distvect.reshape((-1))
+	dd={"dist":dist,"rotation":rotation,"rotated":rr1_al,"rotated-fixed":distvect}
 	return dd 
 	
 ##################################################################################
@@ -596,13 +598,33 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 	def freeEnergy(self):
 		""" The free energy calculation for PCVs or soma """
                 if self.pathtype=="PCV":
-			i=0
-			#d=alignFirstOntoSecond(self.imagelist[i+1].pos,self.imagelist[i].pos,self.imagelist[i+1].occ)
-                        for i in range (0,len(self.imagelist)):
+                        for i in range (len(self.imagelist)):
+				
                                 pass
                 elif self.pathtype=="SOMA":
-                        for i in range (0,len(self.imagelist)):
-				pass
+			i=0
+			# this is equation 37 of SOMA paper
+			# initialize a per-atom vector to accumulate free energy along the path
+			free_energy=np.zeros(self.imagelist[0].occ.size)			
+                        for i in range (1,len(self.imagelist)):
+				# align i onto i-1
+				d=alignFirstOntoSecond(self.imagelist[i].pos,self.imagelist[i-1].pos,self.imagelist[i].occ)
+				#			
+				# meanforces from the first  meanforce_avg * derivatives	
+				#		
+				# the i force is aligned to the i-1
+				f1=np.empty(self.imagelist[i].derivatives.size)
+				f1=self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg
+				f1=f1.reshape((-1,3))		
+				for j in range(f1.shape[0]): f1[j,:]=np.dot(d["rotation"],f1[j,:]) # the second should be rotated on top of the first 
+				# the i force does not require alignment 
+				f2=np.empty(self.imagelist[i-1].derivatives.size)
+				f2=self.imagelist[i-1].derivatives*self.imagelist[i-1].meanforce_avg
+				f2=f2.reshape((-1,3))		
+				# now combine 
+				distvec=d["rotated-fixed"].reshape((-1,3)) 
+				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]))	
+				print "FREE_ENERGY ",free_energy.sum()
 
 ##################################################################################
 # MDParserClass 

@@ -11,13 +11,13 @@ samplefreq=50
 dumpfreq=500
 evolstep=0.00125  
 optends=True
-#pathtype="SOMA"
-#springconstant=1500
+pathtype="SOMA"
+springconstant=1500
 #restart=True
-pathtype="PCV"
-springconstant_s=20.
-springconstant_z=1000.
-lambdaval=5230
+#pathtype="PCV"
+#springconstant_s=20.
+#springconstant_z=1000.
+#lambdaval=5230
 #############################
 ## input file
 #############################
