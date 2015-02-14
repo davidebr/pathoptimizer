@@ -16,6 +16,71 @@ import tarfile
 #
 np.set_printoptions(precision=4,suppress=True,linewidth=120)
 ##################################################################################
+# align
+##################################################################################
+def alignFirstOntoSecond(r1,r2,al): 
+	""" perform an optimal alignment a la plumed2 of the first argument on top of the second"""
+	# normalize weights
+	#al=al/al.sum()
+	# com of x1	
+	rr1=np.copy(r1.reshape((-1,3)))
+	com1=np.array([(rr1[:,0]*al).sum(),(rr1[:,1]*al).sum(),(rr1[:,2]*al).sum()])/al.sum()
+	for i in range(3): rr1[:,i]=rr1[:,i]-com1[i]
+	# com of x2
+	rr2=np.copy(r2.reshape((-1,3)))
+	com2=np.array([(rr2[:,0]*al).sum(),(rr2[:,1]*al).sum(),(rr2[:,2]*al).sum()])/al.sum()
+	for i in range(3): rr2[:,i]=rr2[:,i]-com2[i]
+	rr11=0.
+	rr00=0.
+	rr01=np.zeros(9).reshape((3,3))
+	for i in range(rr1.shape[0]):rr00+=np.dot(rr1[i,:],rr1[i,:])*al[i]
+	for i in range(rr2.shape[0]):rr11+=np.dot(rr2[i,:],rr2[i,:])*al[i]
+	for i in range(rr1.shape[0]):rr01+=np.outer(rr1[i,:],rr2[i,:])*al[i]
+	# go back to colun ordering
+	m=np.empty(16).reshape((4,4))
+	m[0,0]=2.0*(-rr01[0,0]-rr01[1,1]-rr01[2,2])
+	m[1,1]=2.0*(-rr01[0,0]+rr01[1,1]+rr01[2,2])
+	m[2,2]=2.0*(+rr01[0,0]-rr01[1,1]+rr01[2,2])
+	m[3,3]=2.0*(+rr01[0,0]+rr01[1,1]-rr01[2,2])
+	m[0,1]=2.0*(-rr01[1,2]+rr01[2,1])
+	m[0,2]=2.0*(+rr01[0,2]-rr01[2,0])
+	m[0,3]=2.0*(-rr01[0,1]+rr01[1,0])
+	m[1,2]=2.0*(-rr01[0,1]-rr01[1,0])
+	m[1,3]=2.0*(-rr01[0,2]-rr01[2,0])
+	m[2,3]=2.0*(-rr01[1,2]-rr01[2,1])
+	m[1,0] = m[0,1]
+	m[2,0] = m[0,2]
+	m[2,1] = m[1,2]
+	m[3,0] = m[0,3]
+	m[3,1] = m[1,3]
+	m[3,2] = m[2,3]
+	eigenval, eigenvec = np.linalg.eig(m)
+	dist=eigenval[0]+rr00+rr11
+	q=eigenvec[:,0]
+	#print "DISTANCE ",dist,eigenval[0]
+	rotation=np.empty(9).reshape((3,3))
+	rotation[0,0]=q[0]*q[0]+q[1]*q[1]-q[2]*q[2]-q[3]*q[3]
+	rotation[1,1]=q[0]*q[0]-q[1]*q[1]+q[2]*q[2]-q[3]*q[3]
+	rotation[2,2]=q[0]*q[0]-q[1]*q[1]-q[2]*q[2]+q[3]*q[3]
+	rotation[0,1]=2*(+q[0]*q[3]+q[1]*q[2])
+	rotation[0,2]=2*(-q[0]*q[2]+q[1]*q[3])
+	rotation[1,2]=2*(+q[0]*q[1]+q[2]*q[3])
+	rotation[1,0]=2*(-q[0]*q[3]+q[1]*q[2])
+	rotation[2,0]=2*(+q[0]*q[2]+q[1]*q[3])
+	rotation[2,1]=2*(-q[0]*q[1]+q[2]*q[3])
+	# this in plumed2 is the matrix that aligns the reference onto the runnig, make the translate
+	rotation=np.transpose(rotation)
+	#print "ROTATION ",rotation
+	# now rotate running frame and dump it
+	# take the vector fresh
+	rr1=np.copy(r1.reshape((-1,3)))
+	rr1_al=np.empty(r1.size).reshape((-1,3))
+        for i in range(rr1.shape[0]): rr1_al[i,:]=np.dot(rotation,rr1[i,:]-com1)+com2	
+	rr1_al=rr1_al.reshape((-1))
+	dd={"dist":dist,"rotation":rotation,"rotated":rr1_al}
+	return dd 
+	
+##################################################################################
 #
 # basic queue class: this is a simple test for queue class
 #
@@ -249,7 +314,7 @@ class ImageClass(object):
 			assert isinstance(a, (dict))
                         for i in a.keys():
                                 setattr(self,i.split(".")[-1],a[i])
-                                print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])
+                                #print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])
                         # average_derivatives
                         a=readPlumedPrintOutput("average_derivatives")
                         # reshape in numpy array that makes sense
@@ -514,7 +579,30 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		# go back home
 		os.chdir(self.rootdir)		
 
+	def evolve(self):
+		""" Evolving the frames according to the rule SOMA/PCV """
+		# TODO: plug a smarter evolution like cg?
+		if self.pathtype=="PCV":
+	                for i in range (0,len(self.imagelist)):			
+				# calculate the coupling matrix
+				# evolve
+				pass		
+		elif self.pathtype=="SOMA":
+			# sum the derivative over all the images
+	                for i in range (0,len(self.imagelist)):			
+				pass
+			# it is a functional: should depend on the stepping?
 
+	def freeEnergy(self):
+		""" The free energy calculation for PCVs or soma """
+                if self.pathtype=="PCV":
+			i=0
+			#d=alignFirstOntoSecond(self.imagelist[i+1].pos,self.imagelist[i].pos,self.imagelist[i+1].occ)
+                        for i in range (0,len(self.imagelist)):
+                                pass
+                elif self.pathtype=="SOMA":
+                        for i in range (0,len(self.imagelist)):
+				pass
 
 ##################################################################################
 # MDParserClass 
@@ -821,9 +909,11 @@ def doOptimization(argv):
 		print "************Parse Outputs*************"
 		# read the derivatives 
                 myString.parseRunOutput(myMDParser)
+		# calculate the free energy
+		myString.freeEnergy()
 		# evolve
-		#myString.Integrate()
-		# reparametrize (now externally)
+		myString.evolve()
+		# reparametrize 
 
 		if myString.test==True: sys.exit()	
 		# store data 
