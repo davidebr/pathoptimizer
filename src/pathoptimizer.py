@@ -284,7 +284,7 @@ class ImageClass(object):
 			assert isinstance(a, (dict))  
 			for i in a.keys():
 				setattr(self,i.split(".")[-1],a[i])
-				#print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])	
+				print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])	
 			# average_derivatives 
 			a=readPlumedPrintOutput("average_derivatives")
 			# reshape in numpy array that makes sense	
@@ -369,7 +369,7 @@ class StringClass(object):
 		self.storedir=os.path.join(self.rootdir,self.storedir)
 		self.workdir=os.path.join(self.rootdir,self.workdir)
 		self.restart=False
-		copyVarsToObjectByName(self,["restart","test"],inputvariables,optional=True)
+		copyVarsToObjectByName(self,["restart","test","plumedoptions"],inputvariables,optional=True)
 
 	def optimizationType(self,inputvariables):
 		""" scan the inputlines and see if you have Soma or Pathcvs: then parse the correct arguments """
@@ -462,6 +462,7 @@ RMSD ...
   SQUARED
 ... RMSD
 wall: MOVINGRESTRAINT ARG=rmsd STEP0=0 AT0=0. KAPPA0={springconstant}
+PRINT ARG=rmsd,wall.bias STRIDE={samplefreq} FILE=colvar FMT=%12.8e
 #
 # this below is for a statistics on the bias
 #
@@ -490,6 +491,12 @@ PRINT ARG=(avg_outer\..+) STRIDE={dumpfreq} FILE=average_outerproduct FMT=%12.8e
         	        "samplefreq":self.samplefreq,
         	        "springconstant":self.springconstant
         	}
+		try:
+		  self.plumedoptions
+		except NameError:
+			pass	
+		else:
+        		f.write(self.plumedoptions)
         	f.write(filecontent.format(**context))
 		f.close()
 	
@@ -532,6 +539,12 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
         	        "lambdaval":self.lambdaval,
         	        "sval":str(sval+0.),
         	}
+		try:
+		  self.plumedoptions
+		except NameError:
+			pass	
+		else:
+        		f.write(self.plumedoptions)
         	f.write(filecontent.format(**context))
 		f.close()
         def prepareUmbrellas(self,myMDParser):
@@ -595,7 +608,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				pass
 			# it is a functional: should depend on the stepping?
 
-	def freeEnergy(self):
+	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or soma """
                 if self.pathtype=="PCV":
                         for i in range (len(self.imagelist)):
@@ -623,7 +636,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				f2=f2.reshape((-1,3))		
 				# now combine 
 				distvec=d["rotated-fixed"].reshape((-1,3)) 
-				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]))	
+				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]*fact))	
 				print "FREE_ENERGY ",free_energy.sum()
 
 ##################################################################################
@@ -659,6 +672,13 @@ class MDParserClass(object):
 		else :
 			print "The program "+self.program+" is not yet implemented! "
 			exit(2)
+	def AngstromPerMDUnits(self):
+		""" returns the factor Ang/MDunits (for GROMACS is 10 since is nm) """ 
+		if self.program=="GROMACS":
+			return 10.0
+		else:
+			sys.exit()
+	
 	def lookupGROMACSArgs(self,inputvariables):
 		""" define specific GROMACS junk """
 		# this must be specified
@@ -932,7 +952,7 @@ def doOptimization(argv):
 		# read the derivatives 
                 myString.parseRunOutput(myMDParser)
 		# calculate the free energy
-		myString.freeEnergy()
+		myString.freeEnergy(myMDParser.AngstromPerMDUnits())
 		# evolve
 		myString.evolve()
 		# reparametrize 
