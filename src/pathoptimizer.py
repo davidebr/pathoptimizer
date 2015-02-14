@@ -11,14 +11,39 @@ import re
 import copy
 import string
 import tarfile
+import math
 #
 # numpy printoptions
 #
 np.set_printoptions(precision=4,suppress=True,linewidth=120)
 ##################################################################################
+# getPathCVs : find the value of the pcvs along the string 
+##################################################################################
+def getPathCVsForEachImage(imagelist,lambdaval):
+	for i in range(len(imagelist)):
+		d=getPathCVs(imagelist[i],imagelist,lambdaval) 
+		print "s ",d["s"]," z ",d["z"]
+def getPathCVs(frame,imagelist,lambdaval):
+	sumexp=0.
+	s=0.
+	alld=[]
+        for i in range(len(imagelist)):		
+		d=alignFirstOntoSecond(frame.pos,imagelist[i].pos,frame.occ,frame.beta)			
+		dist=d["dist"]
+		tmp=math.exp(-lambdaval*dist)
+		alld.append(dist)
+		s+=(i+1)*tmp
+		sumexp+=tmp
+	#print "ALLD ",alld
+	s=s/sumexp
+	z=-(1./lambdaval)*math.log(sumexp)
+	d={"s":s,"z":z}
+	return d 
+	
+##################################################################################
 # align
 ##################################################################################
-def alignFirstOntoSecond(r1,r2,al): 
+def alignFirstOntoSecond(r1,r2,al,disp): 
 	""" perform an optimal alignment a la plumed2 of the first argument on top of the second"""
 	# normalize weights
 	#al=al/al.sum()
@@ -54,10 +79,15 @@ def alignFirstOntoSecond(r1,r2,al):
 	m[3,0] = m[0,3]
 	m[3,1] = m[1,3]
 	m[3,2] = m[2,3]
-	eigenval, eigenvec = np.linalg.eig(m)
-	dist=eigenval[0]+rr00+rr11
-	q=eigenvec[:,0]
-	#print "DISTANCE ",dist,eigenval[0]
+	try:
+		eigenval, eigenvec = np.linalg.eig(m)
+	except LinAlgError:	
+		print "calc not converged"
+		sys.exit()
+	imin=np.argmin(eigenval)
+	dist=eigenval[imin]+rr00+rr11
+	q=eigenvec[:,imin]
+	#print "DISTANCE ",dist,eigenval
 	rotation=np.empty(9).reshape((3,3))
 	rotation[0,0]=q[0]*q[0]+q[1]*q[1]-q[2]*q[2]-q[3]*q[3]
 	rotation[1,1]=q[0]*q[0]-q[1]*q[1]+q[2]*q[2]-q[3]*q[3]
@@ -77,8 +107,12 @@ def alignFirstOntoSecond(r1,r2,al):
 	distvect=np.empty(r1.size).reshape((-1,3))
         for i in range(rr1.shape[0]): rr1_al[i,:]=np.dot(rotation,rr1[i,:])+com2	
         for i in range(rr1.shape[0]): distvect[i,:]=rr1_al[i,:]-(rr2[i,:]+com2) 	
+	dist=0
+        for i in range(rr1.shape[0]): dist+=np.dot(distvect[i,:],distvect[i,:])*disp[i]  	
+	dist/=disp.sum()	
 	rr1_al=rr1_al.reshape((-1))
 	distvect=distvect.reshape((-1))
+		
 	dd={"dist":dist,"rotation":rotation,"rotated":rr1_al,"rotated-fixed":distvect}
 	return dd 
 	
@@ -611,17 +645,21 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or soma """
                 if self.pathtype=="PCV":
-                        for i in range (len(self.imagelist)):
-				
-                                pass
+			pathcvs=getPathCVsForEachImage(self.imagelist,self.lambdaval)	
+                        #for i in range (len(self.imagelist)):
+                                #pass
                 elif self.pathtype=="SOMA":
 			i=0
 			# this is equation 37 of SOMA paper
 			# initialize a per-atom vector to accumulate free energy along the path
 			free_energy=np.zeros(self.imagelist[0].occ.size)			
+			print "FREE_ENERGY ",free_energy.sum()
+			self.free_energy=[]
+			# place everything in a vector that will be dumped afterwards
+			self.free_energy.append([free_energy,free_energy.sum()])	
                         for i in range (1,len(self.imagelist)):
 				# align i onto i-1
-				d=alignFirstOntoSecond(self.imagelist[i].pos,self.imagelist[i-1].pos,self.imagelist[i].occ)
+				d=alignFirstOntoSecond(self.imagelist[i].pos,self.imagelist[i-1].pos,self.imagelist[i].occ,self.imagelist[i].beta)
 				#			
 				# meanforces from the first  meanforce_avg * derivatives	
 				#		
@@ -638,6 +676,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				distvec=d["rotated-fixed"].reshape((-1,3)) 
 				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]*fact))	
 				print "FREE_ENERGY ",free_energy.sum()
+	                        self.free_energy.append([free_energy,free_energy.sum()])	
 
 ##################################################################################
 # MDParserClass 
