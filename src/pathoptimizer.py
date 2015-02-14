@@ -115,7 +115,7 @@ def readPlumedPrintOutput(filename):
 				if line[0:2]=="#!": # this is the header
 					header=line.split()[3:] #exclude time
 				else:
-					data=line.split()[1:]  # I overwrite this since the average is supposed to be already calculated by plumed
+					data=map(float,line.split()[1:])  # I overwrite this since the average is supposed to be already calculated by plumed
 			f.close()
 		assert len(header)==len(data)	
 		# create a dictionary, maybe simple to parse
@@ -243,9 +243,36 @@ class ImageClass(object):
 				self.outerproduct[ind1*3+comp1,ind2*3+comp2]=a[i]					
 			#print self.outerproduct
 			print "  outerproduct is read "
-					
 		elif parentString.pathtype=="PCV" :
 			print "  Retrieving PCV statistics for image ", index
+			a=readPlumedPrintOutput("average_meanforces")
+			assert isinstance(a, (dict))
+                        for i in a.keys():
+                                setattr(self,i.split(".")[-1],a[i])
+                                print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])
+                        # average_derivatives
+                        a=readPlumedPrintOutput("average_derivatives")
+                        # reshape in numpy array that makes sense
+                        assert isinstance(a, (dict))
+			self.derivatives_s=np.empty((len(parentString.imagelist),len(self.occ)*3))
+			self.derivatives_z=np.empty((len(parentString.imagelist),len(self.occ)*3))
+			for i in a.keys():
+				frame=i.split(".")[-1].split("_")[3]
+				ind=self.pdb2ind[i.split(".")[-1].split("_")[5]]
+				comp=self.comp2ind[i.split(".")[-1].split("_")[6]]
+				cv=i.split(".")[-1].split("_")[0]
+				#print "Added ",i.split(".")[-1],frame,ind,comp,cv	
+				if cv=="sss":
+					self.derivatives_s[frame,ind*3+comp]=a[i]
+				elif cv=="zzz":
+					self.derivatives_z[frame,ind*3+comp]=a[i]
+				else:
+					print "Error while reading derivatives from PCVs"
+					sys.exit()
+			#print  self.derivatives_s
+			#print self.derivatives_z
+				
+			
 				
 ##################################################################################
 # the string is a collection of images plus information on how to run it
@@ -256,10 +283,9 @@ class StringClass(object):
 	""" this class contains the whole string and the setup on directory organization"""
 	def __init__(self,inputvariables):
 		""" read the string from the inputlines"""
-		test=False
+		self.test=False
 		# these are the properties required for this input: if you need any new, just plug it in here: checks are automatically performed
-		needednames=["string","storedir","workdir","dumpfreq","evolstep","discard","maxrounds","optends"]
-
+		needednames=["string","storedir","workdir","dumpfreq","evolstep","discard","maxrounds","optends","samplefreq"]
 		print "reading input file for images"
 		self.optends=False
 		copyVarsToObjectByName(self,needednames,inputvariables)
@@ -267,6 +293,10 @@ class StringClass(object):
        	 	self.imagelist=readPDB(self.string)
 		# type of optimization: soma or pathcvs
 		self.optimizationType(inputvariables)
+		# check that the samplefreq and dumpreq make sense
+		if self.samplefreq>self.dumpfreq or self.dumpfreq%self.samplefreq!=0:
+			print "dumpfreq must be a multiple of samplefreq"
+			sys.exit(2)
        	 	self.rootdir=os.getcwd()
 		# make full names out of local
 		self.storedir=os.path.join(self.rootdir,self.storedir)
@@ -376,20 +406,21 @@ RMSD ...
   SQUARED
 ... RMSD
 meanforce:  MATHEVAL ARG=rmsd_stat.rmsd VAR=d  PERIODIC=NO FUNC={springconstant}*d
-avg_meanforces: AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={dumpfreq} USE_ALL_DATA
-avg_derivatives: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={dumpfreq} USE_ALL_DATA
+avg_meanforces: AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={samplefreq} USE_ALL_DATA
+avg_derivatives: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={samplefreq} USE_ALL_DATA
 PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
 PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8e
 #
 # this is the outer product for metrics scaling
 #
 outer: OUTERPRODUCT ARG=(rmsd_stat\.somader_.+)
-avg_outer: AVERAGE ARG=(outer\..+) STRIDE={dumpfreq} USE_ALL_DATA
+avg_outer: AVERAGE ARG=(outer\..+) STRIDE={samplefreq} USE_ALL_DATA
 PRINT ARG=(avg_outer\..+) STRIDE={dumpfreq} FILE=average_outerproduct FMT=%12.8e
 """
         	context = {
         	        "reference":reference,
         	        "dumpfreq":self.dumpfreq,
+        	        "samplefreq":self.samplefreq,
         	        "springconstant":self.springconstant
         	}
         	f.write(filecontent.format(**context))
@@ -420,14 +451,15 @@ PATHMSD ...
 ... PATHMSD
 meanforce_s:  MATHEVAL ARG=path_stat.sss VAR=s  PERIODIC=NO FUNC={springconstant_s}*({sval}-s)
 meanforce_z:  MATHEVAL ARG=path_stat.zzz VAR=z  PERIODIC=NO FUNC={springconstant_z}*z
-avg_meanforces: AVERAGE ARG=path_stat.sss,path_stat.zzz,meanforce_s,meanforce_z STRIDE={dumpfreq} USE_ALL_DATA
-avg_derivatives: AVERAGE ARG=(path_stat\.sss_refder_.+|path_stat\.zzz_refder_.+) STRIDE={dumpfreq} USE_ALL_DATA
+avg_meanforces: AVERAGE ARG=path_stat.sss,path_stat.zzz,meanforce_s,meanforce_z STRIDE={samplefreq} USE_ALL_DATA
+avg_derivatives: AVERAGE ARG=(path_stat\.sss_refder_.+|path_stat\.zzz_refder_.+) STRIDE={samplefreq} USE_ALL_DATA
 PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
 PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8e
 """
         	context = {
         	        "reference":reference,
         	        "dumpfreq":self.dumpfreq,
+        	        "samplefreq":self.samplefreq,
         	        "springconstant_s":self.springconstant_s,
         	        "springconstant_z":self.springconstant_z,
         	        "lambdaval":self.lambdaval,
@@ -789,12 +821,12 @@ def doOptimization(argv):
 		print "************Parse Outputs*************"
 		# read the derivatives 
                 myString.parseRunOutput(myMDParser)
-		# calculate the mean forces
 		# evolve
+		#myString.Integrate()
 		# reparametrize (now externally)
+
 		if myString.test==True: sys.exit()	
-
-
+		# store data 
 		# reinitialize
 	
                 # old ORAC trick: check if a "STOP" file is there
