@@ -3,7 +3,7 @@ import sys
 import os
 import getopt
 import shutil
-import numpy
+import numpy as np
 import time
 import subprocess
 import string
@@ -14,7 +14,7 @@ import tarfile
 #
 # numpy printoptions
 #
-numpy.set_printoptions(precision=4,suppress=True,linewidth=120)
+np.set_printoptions(precision=4,suppress=True,linewidth=120)
 ##################################################################################
 #
 # basic queue class: this is a simple test for queue class
@@ -117,7 +117,12 @@ def readPlumedPrintOutput(filename):
 				else:
 					data=line.split()[1:]  # I overwrite this since the average is supposed to be already calculated by plumed
 			f.close()
-		return [header,data]
+		assert len(header)==len(data)	
+		# create a dictionary, maybe simple to parse
+		d={}
+		for name,val in zip(header,data):
+			d[name]=val	
+		return d
 
 ##################################################################################
 # convenience function : just paste variables names and content from an environment 
@@ -169,13 +174,21 @@ def readPDB(filename):
 			# push the pdb into the image
 			#print pdb
 			img=ImageClass()
+			# create also numpy like object, to do easy computation
+			img.pos=np.empty( len(pdb)*3 ) 
+			img.occ=np.empty(len(pdb))
+			img.beta=np.empty(len(pdb))
+			img.pdb2ind={}
+			img.ind2pdb={}
 			for i in range(len(pdb)):
 				img.details.append(pdb[i][0])
-				img.x.append(pdb[i][1])
-				img.y.append(pdb[i][2])
-				img.z.append(pdb[i][3])
-				img.occ.append(pdb[i][4])
-				img.beta.append(pdb[i][5])
+				img.pdb2ind[pdb[i][0].split()[1]]=i
+				img.ind2pdb[i]=[pdb[i][0].split()[1]]
+				img.pos[i*3+0]=pdb[i][1]
+				img.pos[i*3+1]=pdb[i][2]
+				img.pos[i*3+2]=pdb[i][3]
+				img.occ[i]=(pdb[i][4])
+				img.beta[i]=(pdb[i][5])
 			images.append(img)
 			pdb=[]
 		else:
@@ -190,12 +203,10 @@ def readPDB(filename):
 ##################################################################################
 class ImageClass(object):
 	""" A simple image class which is meant to keep the data from a pdb"""
+	# this is needed to translate from plumed to numpy structure 
+	comp2ind={'x':0,'y':1,'z':2}
+	ind2comp={0:'x',1:'y',2:'z'}
 	def __init__(self):
-		self.x=[]
-		self.y=[]
-		self.z=[]
-		self.occ=[]
-		self.beta=[]
 		self.details=[]
 	def parseRunOutput(self,parentString,index):
 		""" retrieve the output and attach to the string according the type of calculation performed (SOMA/PCVs)"""
@@ -203,19 +214,36 @@ class ImageClass(object):
 			print "  Retrieving SOMA statistics for image ",index
 			# average_meanforces 
 			a=readPlumedPrintOutput("average_meanforces")
-			assert isinstance(a, (list))  
-			self.meanforce=copy.deepcopy(a)
-			print a[0],a[1]
+			assert isinstance(a, (dict))  
+			for i in a.keys():
+				setattr(self,i.split(".")[-1],a[i])
+				#print "Added ",i.split(".")[-1]," : ",getattr(self,i.split(".")[-1])	
 			# average_derivatives 
 			a=readPlumedPrintOutput("average_derivatives")
-			assert isinstance(a, (list))  
-			self.derivatives=copy.deepcopy(a)
-			print a[0],a[1]
+			# reshape in numpy array that makes sense	
+			assert isinstance(a, (dict))  
+			self.derivatives=np.empty(len(self.occ)*3)
+			for i in a.keys():
+				ind=self.pdb2ind[i.split(".")[-1].split("_")[1]]
+				comp=self.comp2ind[i.split(".")[-1].split("_")[2]]
+				#print "Added ",i.split(".")[-1],ind,comp
+				self.derivatives[ind*3+comp]=a[i]
+			#print self.derivatives
 			# average_outerproduct  
+			print "  derivatives are read "
 			a=readPlumedPrintOutput("average_outerproduct")
-			assert isinstance(a, (list))  
-			self.outerproduct=copy.deepcopy(a)
-			print a[0],a[1]
+			assert isinstance(a, (dict))  
+			self.outerproduct=np.empty((len(self.occ)*3,len(self.occ)*3))
+			for i in a.keys():
+				ind1=self.pdb2ind[i.split(".")[3].split("_")[1]]
+				comp1=self.comp2ind[i.split(".")[3].split("_")[2]]
+				ind2=self.pdb2ind[i.split(".")[4].split("_")[1]]
+				comp2=self.comp2ind[i.split(".")[4].split("_")[2]]
+				#print i.split(".")[3:],ind1,comp1,ind2,comp2,a[i]
+				self.outerproduct[ind1*3+comp1,ind2*3+comp2]=a[i]					
+			#print self.outerproduct
+			print "  outerproduct is read "
+					
 		elif parentString.pathtype=="PCV" :
 			print "  Retrieving PCV statistics for image ", index
 				
@@ -317,7 +345,7 @@ class StringClass(object):
 		f=open(filename,"w")			
 		for i in mylist:
 			for j in range(len(self.imagelist[i].details)):					
-				buf="%s%8.3f%8.3f%8.3f%6.2f%6.2f\n"%(self.imagelist[i].details[j],self.imagelist[i].x[j],self.imagelist[i].y[j],self.imagelist[i].z[j],self.imagelist[i].occ[j],self.imagelist[i].beta[j]) 
+				buf="%s%8.3f%8.3f%8.3f%6.2f%6.2f\n"%(self.imagelist[i].details[j],self.imagelist[i].pos[j*3+0],self.imagelist[i].pos[j*3+1],self.imagelist[i].pos[j*3+2],self.imagelist[i].occ[j],self.imagelist[i].beta[j]) 
 				f.write(buf)
 			f.write("END\n")
 		f.close()
