@@ -22,7 +22,7 @@ np.set_printoptions(precision=4,suppress=True,linewidth=120)
 def getPathCVsForEachImage(imagelist,lambdaval):
 	for i in range(len(imagelist)):
 		d=getPathCVs(imagelist[i],imagelist,lambdaval) 
-		print "s ",d["s"]," z ",d["z"]
+		#print "s ",d["s"]," z ",d["z"]
 		imagelist[i].s=d["s"]
 		imagelist[i].z=d["z"]
 def getPathCVs(frame,imagelist,lambdaval):
@@ -672,6 +672,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				# meanforces from the first  meanforce_avg * derivatives	
 				#		
 				# the i force is aligned to the i-1
+				#print dir(self.imagelist[i])
 				f1=np.empty(self.imagelist[i].derivatives.size)
 				f1=self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg
 				f1=f1.reshape((-1,3))		
@@ -682,7 +683,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				f2=f2.reshape((-1,3))		
 				# now combine 
 				distvec=d["rotated-fixed"].reshape((-1,3)) 
-				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]*fact))	
+				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]/fact))	
 				print "FREE_ENERGY ",free_energy.sum()
 	                        self.free_energy.append([free_energy,free_energy.sum()])	
 		else:

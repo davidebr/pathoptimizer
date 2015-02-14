@@ -2,7 +2,7 @@
 # specifications for the string 
 #############################
 discard=0.1
-#test=True
+test=True
 string="string.pdb" 
 maxrounds=30
 storedir="store"
@@ -14,7 +14,6 @@ optends=True
 pathtype="SOMA"
 springconstant=40000000
 # plumedoptions are placed before all
-# 5 7 9 15 17 
 plumedoptions="""
 tor1: TORSION ATOMS=5,7,9,15
 tor2: TORSION ATOMS=7,9,15,17
