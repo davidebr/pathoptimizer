@@ -23,6 +23,8 @@ def getPathCVsForEachImage(imagelist,lambdaval):
 	for i in range(len(imagelist)):
 		d=getPathCVs(imagelist[i],imagelist,lambdaval) 
 		print "s ",d["s"]," z ",d["z"]
+		imagelist[i].s=d["s"]
+		imagelist[i].z=d["z"]
 def getPathCVs(frame,imagelist,lambdaval):
 	sumexp=0.
 	s=0.
@@ -645,9 +647,15 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or soma """
                 if self.pathtype=="PCV":
-			pathcvs=getPathCVsForEachImage(self.imagelist,self.lambdaval)	
-                        #for i in range (len(self.imagelist)):
-                                #pass
+			# the values are appended to each image
+			getPathCVsForEachImage(self.imagelist,self.lambdaval)	
+                        self.free_energy=[0.]
+			print "FREE_ENERGY ",self.free_energy[-1]	
+                        for i in range (1,len(self.imagelist)):
+				dfree_s=0.5*(self.imagelist[i].meanforce_s_avg+self.imagelist[i-1].meanforce_s_avg)*(self.imagelist[i].s-self.imagelist[i-1].s)
+				dfree_z=0.5*(self.imagelist[i].meanforce_z_avg+self.imagelist[i-1].meanforce_z_avg)*(self.imagelist[i].z-self.imagelist[i-1].z)
+				self.free_energy.append(self.free_energy[-1]+dfree_s+dfree_z)
+				print "FREE_ENERGY ",self.free_energy[-1]	
                 elif self.pathtype=="SOMA":
 			i=0
 			# this is equation 37 of SOMA paper
@@ -677,6 +685,9 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				for j in range(f1.shape[0]):free_energy[j]+=0.5*(np.dot(f1[j,:]+f2[j,:],distvec[j,:]*fact))	
 				print "FREE_ENERGY ",free_energy.sum()
 	                        self.free_energy.append([free_energy,free_energy.sum()])	
+		else:
+			print "method not implemented "
+			sys.exit()
 
 ##################################################################################
 # MDParserClass 
