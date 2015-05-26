@@ -334,18 +334,19 @@ class ImageClass(object):
 			#print self.derivatives
 			# average_outerproduct  
 			print "  derivatives are read "
-			a=readPlumedPrintOutput("average_outerproduct")
+			a=readPlumedPrintOutput("average_metrics")
 			assert isinstance(a, (dict))  
-			self.outerproduct=np.empty((len(self.occ)*3,len(self.occ)*3))
+			self.metrics=np.empty((len(self.occ)*3,len(self.occ)*3))
 			for i in a.keys():
-				ind1=self.pdb2ind[i.split(".")[3].split("_")[1]]
-				comp1=self.comp2ind[i.split(".")[3].split("_")[2]]
-				ind2=self.pdb2ind[i.split(".")[4].split("_")[1]]
-				comp2=self.comp2ind[i.split(".")[4].split("_")[2]]
-				#print i.split(".")[3:],ind1,comp1,ind2,comp2,a[i]
-				self.outerproduct[ind1*3+comp1,ind2*3+comp2]=a[i]					
-			#print self.outerproduct
-			print "  outerproduct is read "
+				ind1=self.pdb2ind[i.split(".")[2].split("_")[1]]
+				comp1=self.comp2ind[i.split(".")[2].split("_")[2]]
+				ind2=self.pdb2ind[i.split(".")[2].split("_")[3]]
+				comp2=self.comp2ind[i.split(".")[2].split("_")[4]]
+				#print ind1,comp1,ind2,comp2,i,a[i]
+				self.metrics[ind1*3+comp1,ind2*3+comp2]=a[i]					
+				self.metrics[ind2*3+comp2,ind1*3+comp1]=a[i]					
+			#print self.metrics
+			print "  metrics is read "
 		elif parentString.pathtype=="PCV" :
 			print "  Retrieving PCV statistics for image ", index
 			a=readPlumedPrintOutput("average_meanforces")
@@ -509,17 +510,17 @@ RMSD ...
   TYPE=OPTIMAL
   SQUARED
 ... RMSD
-meanforce:  MATHEVAL ARG=rmsd_stat.rmsd VAR=d  PERIODIC=NO FUNC={springconstant}*d
-avg_meanforces: AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={samplefreq} USE_ALL_DATA
+# this is the instantaneous from the restraint
+meanforce:       MATHEVAL ARG=rmsd_stat.rmsd VAR=d  PERIODIC=NO FUNC={springconstant}*d
+# this is the meanforce from the restraint 
+avg_meanforces:  AVERAGE ARG=rmsd_stat.rmsd,meanforce STRIDE={samplefreq} USE_ALL_DATA
+# these are the average of the derivative on the reference
 avg_derivatives: AVERAGE ARG=(rmsd_stat\.somader_.+) STRIDE={samplefreq} USE_ALL_DATA
-PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
+# the average on the metrics factor
+avg_metrics:     AVERAGE ARG=(rmsd_stat\.somamat_.+) STRIDE={samplefreq} USE_ALL_DATA
 PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12.8e
-#
-# this is the outer product for metrics scaling
-#
-outer: OUTERPRODUCT ARG=(rmsd_stat\.somader_.+)
-avg_outer: AVERAGE ARG=(outer\..+) STRIDE={samplefreq} USE_ALL_DATA
-PRINT ARG=(avg_outer\..+) STRIDE={dumpfreq} FILE=average_outerproduct FMT=%12.8e
+PRINT ARG=(avg_derivatives\..+) STRIDE={dumpfreq} FILE=average_derivatives FMT=%12.8e
+PRINT ARG=(avg_metrics\..+) STRIDE={dumpfreq} FILE=average_metrics FMT=%12.8e
 """
         	context = {
         	        "reference":reference,
@@ -635,17 +636,19 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		# TODO: plug a smarter evolution like cg?
 		if self.pathtype=="PCV":
 	                for i in range (0,len(self.imagelist)):			
-				# calculate the coupling matrix
 				# evolve
 				pass		
 		elif self.pathtype=="SOMA":
+			# implements eq 35
 			# sum the derivative over all the images
 	                for i in range (0,len(self.imagelist)):			
+				# get the coupling matrix
+				# build the projector
+				# evolve	
 				pass
-			# it is a functional: should depend on the stepping?
 
 	def freeEnergy(self,fact):
-		""" The free energy calculation for PCVs or soma """
+		""" The free energy calculation for PCVs or SOMA """
                 if self.pathtype=="PCV":
 			# the values are appended to each image
 			getPathCVsForEachImage(self.imagelist,self.lambdaval)	
@@ -668,6 +671,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
                         for i in range (1,len(self.imagelist)):
 				# align i onto i-1
 				d=alignFirstOntoSecond(self.imagelist[i].pos,self.imagelist[i-1].pos,self.imagelist[i].occ,self.imagelist[i].beta)
+				self.imagelist[i].rotation=d["rotation"] #store it for later use into the evolution
 				#			
 				# meanforces from the first  meanforce_avg * derivatives	
 				#		
