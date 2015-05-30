@@ -641,7 +641,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		elif self.pathtype=="SOMA":
 	                for i in range(len(self.imagelist)):			
 				n=len(self.imagelist[i].pos)
-				f_ort=np.empty(3*n) #
+				f_ort=np.empty(n) #
                         	gg=-self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg				
 				metrics=self.imagelist[i].metrics	
 				# the endpoints
@@ -656,7 +656,6 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 					if np.dot(distvec,np.dot(metrics,gg)) <0:	
 						d=alignFirstOntoSecond(self.imagelist[i-1].pos,self.imagelist[i].pos,self.imagelist[i].occ,self.imagelist[i].beta)
 						distvec=d["rotated-fixed"]	
-					n=distvec.shape[0]
 					# build the projector
 					mtilde=np.absolute(np.diagonal(metrics))**-1
 					# eq 50
@@ -665,8 +664,14 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				 	proj=np.identity(n)-np.outer(np.multiply(mtilde,t),t)		
 				# now evolve with eq 45
 				deltapos=np.dot(proj,np.dot(metrics,gg)) 
-				print deltapos	
-
+				# set a threshold for displacement
+				deltapos=deltapos.reshape((-1,3))
+				d2=np.sum(np.square(deltapos),axis=1)
+				maxdisp=np.nanmax(np.sqrt(d2))	
+				print maxdisp
+				# find the step so that v*deltapos is 0.1 
+				v=0.1/maxdisp
+				
 	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or SOMA """
                 if self.pathtype=="PCV":
