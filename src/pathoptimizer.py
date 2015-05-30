@@ -639,13 +639,33 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 				# evolve
 				pass		
 		elif self.pathtype=="SOMA":
-			# implements eq 35
-			# sum the derivative over all the images
-	                for i in range (0,len(self.imagelist)):			
-				# get the coupling matrix
-				# build the projector
-				# evolve	
-				pass
+	                for i in range(len(self.imagelist)):			
+				n=len(self.imagelist[i].pos)
+				f_ort=np.empty(3*n) #
+                        	gg=-self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg				
+				metrics=self.imagelist[i].metrics	
+				# the endpoints
+				if i==0 or i==len(self.imagelist)-1:
+					# implements a simple diagonal projector (i.e. no projections)
+					proj=np.identity(n)
+				else:
+					# implements eq 35
+					distvec=self.imagelist[i].distvec
+					# which adjacent node?
+					#  condition eq 57
+					if np.dot(distvec,np.dot(metrics,gg)) <0:	
+						d=alignFirstOntoSecond(self.imagelist[i-1].pos,self.imagelist[i].pos,self.imagelist[i].occ,self.imagelist[i].beta)
+						distvec=d["rotated-fixed"]	
+					n=distvec.shape[0]
+					# build the projector
+					mtilde=np.absolute(np.diagonal(metrics))**-1
+					# eq 50
+					t=distvec/math.sqrt(np.dot(mtilde,distvec**2))
+					# projector
+				 	proj=np.identity(n)-np.outer(np.multiply(mtilde,t),t)		
+				# now evolve with eq 45
+				deltapos=np.dot(proj,np.dot(metrics,gg)) 
+				print deltapos	
 
 	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or SOMA """
@@ -671,7 +691,11 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
                         for i in range (1,len(self.imagelist)):
 				# align i onto i-1
 				d=alignFirstOntoSecond(self.imagelist[i].pos,self.imagelist[i-1].pos,self.imagelist[i].occ,self.imagelist[i].beta)
-				self.imagelist[i].rotation=d["rotation"] #store it for later use into the evolution
+				# store it as property of the previous frame 
+				# so that frame i contains the rotation needed to rotate the next frame on top of itself
+				# and the vector difference to the next image 
+				self.imagelist[i-1].rotation=d["rotation"] #store it for later use into the evolution
+				self.imagelist[i-1].distvec=d["rotated-fixed"]
 				#			
 				# meanforces from the first  meanforce_avg * derivatives	
 				#		
