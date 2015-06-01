@@ -301,6 +301,21 @@ def readPDB(filename):
 	print "File read! Found ",len(images)," images ! "
 	return images
 
+def dumpPDB(filename,mystring):
+	""" a simple pdb writer in terms of images """
+	#create an image for each pdb
+	print "Opening file: ",filename
+	f=open(filename,"w")
+	pdb=[]
+	for i in range (len(mystring.imagelist)):
+			img=mystring.imagelist[i] 
+			for i in range (len(img.pos)/3):
+				f.write('{}  {:6.3f}  {:6.3f}  {:6.3f}  {:4.2f}  {:4.2f} \n'.format(img.details[i],img.pos[3*i+0],img.pos[3*i+1],img.pos[3*i+2],img.occ[i],img.beta[i]))		
+			f.write('END\n')		
+	f.close()
+	print "File written !"
+
+
 ##################################################################################
 # simple image class
 ##################################################################################
@@ -375,6 +390,9 @@ class ImageClass(object):
 					sys.exit()
 			#print  self.derivatives_s
 			#print self.derivatives_z
+	def reinitialize(self,i,myMDParser):
+			mycommand="cp outcoord_"+str(i)+".gro coor_"+str(i+1)+".gro"
+			proc=subprocess.Popen(mycommand,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)	
 				
 			
 				
@@ -631,46 +649,70 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		# go back home
 		os.chdir(self.rootdir)		
 
-	def evolve(self):
+	def evolve(self,fact):
 		""" Evolving the frames according to the rule SOMA/PCV """
 		# TODO: plug a smarter evolution like cg?
-		if self.pathtype=="PCV":
-	                for i in range (0,len(self.imagelist)):			
-				# evolve
-				pass		
-		elif self.pathtype=="SOMA":
-	                for i in range(len(self.imagelist)):			
+                for i in range (0,len(self.imagelist)):	
+			deltapos=np.zeros_like(self.imagelist[i].pos)
+			if self.pathtype=="PCV":
+				# sum over all the meanforces in s and z over all the frames
+				totforce_s=np.zeros_like(self.imagelist[i].derivatives_s[i,:])
+				totforce_z=np.zeros_like(self.imagelist[i].derivatives_s[i,:])
+		        	for j in range (0,len(self.imagelist)):			
+					totforce_s+=self.imagelist[j].derivatives_s[i,:]*self.imagelist[j].meanforce_s_avg   # sum over all the images a specific node
+					totforce_z+=self.imagelist[j].derivatives_z[i,:]*self.imagelist[j].meanforce_z_avg   # sum over all the images a specific node
+				# now you have the force over a node
+				# evolve only along z
+				# find the maximum displacement per atom in angstrom 
+				deltapos=totforce_z.reshape((-1,3))
+				d2=np.sum(np.square(deltapos),axis=1)
+				maxdisp=np.nanmax(np.sqrt(d2))*fact	
+				# find the step so that the step is self.evolstep 
+				tstep=self.evolstep/maxdisp
+				deltapos=tstep*totforce_z*fact 
+
+			elif self.pathtype=="SOMA":
 				n=len(self.imagelist[i].pos)
 				f_ort=np.empty(n) #
-                        	gg=-self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg				
+	                	gg=-self.imagelist[i].derivatives*self.imagelist[i].meanforce_avg				
 				metrics=self.imagelist[i].metrics	
 				# the endpoints
 				if i==0 or i==len(self.imagelist)-1:
 					# implements a simple diagonal projector (i.e. no projections)
 					proj=np.identity(n)
 				else:
-					# implements eq 35
-					distvec=self.imagelist[i].distvec
+					# implements eq 35 remember that positions are in angstrom but all the forces are in internal units
+					# here I convert everything in internal units
+					distvec=self.imagelist[i].distvec/fact
 					# which adjacent node?
 					#  condition eq 57
 					if np.dot(distvec,np.dot(metrics,gg)) <0:	
 						d=alignFirstOntoSecond(self.imagelist[i-1].pos,self.imagelist[i].pos,self.imagelist[i].occ,self.imagelist[i].beta)
-						distvec=d["rotated-fixed"]	
+						distvec=d["rotated-fixed"]/fact  #remember that positions are in angstrom but all the forces are in internal units	
 					# build the projector
 					mtilde=np.absolute(np.diagonal(metrics))**-1
-					# eq 50
-					t=distvec/math.sqrt(np.dot(mtilde,distvec**2))
-					# projector
-				 	proj=np.identity(n)-np.outer(np.multiply(mtilde,t),t)		
+					absdist=math.sqrt(np.dot(mtilde,distvec**2))	 	
+					if absdist > 0:
+						# eq 50
+						t=distvec/absdist
+						# projector
+					 	proj=np.identity(n)-np.outer(np.multiply(mtilde,t),t)		
+					else:
+					 	proj=np.identity(n)		
 				# now evolve with eq 45
 				deltapos=np.dot(proj,np.dot(metrics,gg)) 
-				# set a threshold for displacement
+				# find the maximum displacement per atom in angstrom 
 				deltapos=deltapos.reshape((-1,3))
 				d2=np.sum(np.square(deltapos),axis=1)
-				maxdisp=np.nanmax(np.sqrt(d2))	
-				print maxdisp
-				# find the step so that v*deltapos is 0.1 
-				v=0.1/maxdisp
+				maxdisp=np.nanmax(np.sqrt(d2))*fact	
+				# find the step so that the step is self.evolstep 
+				tstep=self.evolstep/maxdisp
+				deltapos=tstep*np.dot(proj,np.dot(metrics,gg))*fact 
+
+			print deltapos
+			# sum it to the position
+			self.imagelist[i-1].pos=self.imagelist[i-1].pos+deltapos	
+			
 				
 	def freeEnergy(self,fact):
 		""" The free energy calculation for PCVs or SOMA """
@@ -722,6 +764,37 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
 		else:
 			print "method not implemented "
 			sys.exit()
+	def reparametrize(self):
+		print "Now reparametrize!"
+		# enter the scratch directory
+		os.chdir(self.workdir)
+		# dump the frames
+		dumpPDB("PRE-REPARAM.pdb",self)		
+		# call the reparametrization
+		mycommand="~/bin/rmsd_mc.sh -f ciao.pdb -r "+str(len(self.imagelist)) 
+		print mycommand
+		proc=subprocess.Popen(mycommand,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)		
+		# read them back
+		newimages=readPDB("REPARAM.pdb")	
+		for i in range (1,len(self.imagelist)):
+			self.imagelist[i].pos=newimages[i].pos
+		os.chdir(self.storedir)	
+		dumpPDB("iter_"+str(self.round)+".pdb",self)
+		f=open("free_energy","aw")
+		for i in range(len(self.free_energy)):
+			f.write(str(self.free_energy[i])+"\n")  
+		f.write(" ")  
+		f.close()
+		os.chdir(self.workdir)	
+	def reinitialize(self,myMDParser):
+                """ Enter each dir and print the various infos """
+                os.chdir(self.workdir)
+                # clean the queuestack
+                for i in range (0,len(self.imagelist)):	
+			os.chdir(self.imagelist[i].dirname)		
+			# pass the string itself to get the kind of run 
+			self.imagelist[i].reinitialize(self,self.round,myMDParser)
+			os.chdir(self.workdir)
 
 ##################################################################################
 # MDParserClass 
@@ -1038,12 +1111,13 @@ def doOptimization(argv):
 		# calculate the free energy
 		myString.freeEnergy(myMDParser.AngstromPerMDUnits())
 		# evolve
-		myString.evolve()
+		myString.evolve(myMDParser.AngstromPerMDUnits())
 		# reparametrize 
-
+		myString.reparametrize()
 		if myString.test==True: sys.exit()	
 		# store data 
-		# reinitialize
+		# reinitialize: move end of previous runs into new runs
+		myString.renitialize(myMDParser)
 	
                 # old ORAC trick: check if a "STOP" file is there
                 if os.path.isfile("STOP")==True:
