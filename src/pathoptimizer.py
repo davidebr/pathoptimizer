@@ -793,7 +793,7 @@ PRINT ARG=(avg_meanforces\..+) STRIDE={dumpfreq} FILE=average_meanforces FMT=%12
                 for i in range (0,len(self.imagelist)):	
 			os.chdir(self.imagelist[i].dirname)		
 			# pass the string itself to get the kind of run 
-			self.imagelist[i].reinitialize(self,self.round,myMDParser)
+			self.imagelist[i].reinitialize(self.round,myMDParser)
 			os.chdir(self.workdir)
 
 ##################################################################################
@@ -940,7 +940,7 @@ class MDParserClass(object):
 					print "Startfile not in place"
 					sys.exit()	
                                 # bring evthing into the box? 
-				mycommand=self.preprocessor+" -f md.mdp  -c coor_"+str(round)+".gro -p "+self.structure 
+				mycommand=self.preprocessor+" -f md.mdp  -c coor_"+str(round)+".gro -p "+self.topology
  				print mycommand
 				proc=subprocess.Popen(mycommand,shell=True,stderr=subprocess.PIPE,stdout=subprocess.PIPE)
 				f=open("grompp.stdout","w")	
@@ -1117,7 +1117,7 @@ def doOptimization(argv):
 		if myString.test==True: sys.exit()	
 		# store data 
 		# reinitialize: move end of previous runs into new runs
-		myString.renitialize(myMDParser)
+		myString.reinitialize(myMDParser)
 	
                 # old ORAC trick: check if a "STOP" file is there
                 if os.path.isfile("STOP")==True:
